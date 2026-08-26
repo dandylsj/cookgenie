@@ -59,4 +59,14 @@ public class FridgeItem extends BaseTimeEntity {
 
     @Column(length = 200)
     private String memo;
+
+    public void update(BigDecimal quantity, String unit, StorageLocation storageLocation,
+                        LocalDate purchasedAt, LocalDate expiryDate, String memo) {
+        this.quantity = quantity;
+        this.unit = unit;
+        this.storageLocation = storageLocation;
+        this.purchasedAt = purchasedAt;
+        this.expiryDate = expiryDate;
+        this.memo = memo;
+    }
 }
