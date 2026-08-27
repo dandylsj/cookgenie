@@ -6,9 +6,11 @@ import com.cookgenie.domain.auth.dto.RefreshTokenReissueRequest;
 import com.cookgenie.domain.auth.dto.SignupRequest;
 import com.cookgenie.domain.auth.dto.TokenResponse;
 import com.cookgenie.domain.auth.dto.UserInfoResponse;
+import com.cookgenie.domain.auth.dto.WithdrawRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,7 +42,23 @@ public class AuthController {
 
     @GetMapping("/profile")
     public ResponseEntity<GlobalResponse<UserInfoResponse>> profile(@RequestHeader("Authorization") String accessToken) {
-        String token = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-        return ResponseEntity.ok(GlobalResponse.success(authService.getUserInfo(token)));
+        return ResponseEntity.ok(GlobalResponse.success(authService.getUserInfo(resolveToken(accessToken))));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<GlobalResponse<Void>> logout(@RequestHeader("Authorization") String accessToken) {
+        authService.logout(resolveToken(accessToken));
+        return ResponseEntity.ok(GlobalResponse.success(null));
+    }
+
+    @DeleteMapping("/withdraw")
+    public ResponseEntity<GlobalResponse<Void>> withdraw(
+            @RequestHeader("Authorization") String accessToken, @Valid @RequestBody WithdrawRequest request) {
+        authService.withdraw(resolveToken(accessToken), request);
+        return ResponseEntity.ok(GlobalResponse.success(null));
+    }
+
+    private String resolveToken(String accessToken) {
+        return accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
     }
 }

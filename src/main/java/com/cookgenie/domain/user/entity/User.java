@@ -3,6 +3,8 @@ package com.cookgenie.domain.user.entity;
 import com.cookgenie.common.entity.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -45,4 +47,14 @@ public class User extends BaseTimeEntity {
 
     @Column(name = "profile_image_url", length = 255)
     private String profileImageUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
+
+    public void withdraw() {
+        this.status = UserStatus.WITHDRAWN;
+        this.password = null;
+    }
 }

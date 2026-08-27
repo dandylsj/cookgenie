@@ -8,9 +8,11 @@ import com.cookgenie.domain.auth.dto.RefreshTokenReissueRequest;
 import com.cookgenie.domain.auth.dto.SignupRequest;
 import com.cookgenie.domain.auth.dto.TokenResponse;
 import com.cookgenie.domain.auth.dto.UserInfoResponse;
+import com.cookgenie.domain.auth.dto.WithdrawRequest;
 import com.cookgenie.domain.auth.entity.RefreshToken;
 import com.cookgenie.domain.auth.repository.RefreshTokenRepository;
 import com.cookgenie.domain.user.entity.User;
+import com.cookgenie.domain.user.entity.UserStatus;
 import com.cookgenie.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -55,11 +57,37 @@ public class AuthService {
         User user = userRepository.findByLoginId(request.getLoginId())
                 .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
 
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            throw new CustomException(ErrorMessage.WITHDRAWN_USER);
+        }
         if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new CustomException(ErrorMessage.INVALID_PASSWORD);
         }
 
         return issueTokens(user);
+    }
+
+    @Transactional
+    public void logout(String accessToken) {
+        jwtUtil.validateToken(accessToken);
+        Long userId = jwtUtil.extractUserId(accessToken);
+        refreshTokenRepository.deleteByUserId(userId);
+    }
+
+    @Transactional
+    public void withdraw(String accessToken, WithdrawRequest request) {
+        jwtUtil.validateToken(accessToken);
+        String loginId = jwtUtil.extractLoginId(accessToken);
+
+        User user = userRepository.findByLoginId(loginId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
+
+        if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new CustomException(ErrorMessage.INVALID_PASSWORD);
+        }
+
+        user.withdraw();
+        refreshTokenRepository.deleteByUserId(user.getId());
     }
 
     @Transactional

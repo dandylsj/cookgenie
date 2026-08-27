@@ -9,5 +9,7 @@ public interface FridgeMemberRepository extends JpaRepository<FridgeMember, Long
 
     List<FridgeMember> findByFridgeId(Long fridgeId);
 
+    List<FridgeMember> findByUserId(Long userId);
+
     Optional<FridgeMember> findByFridgeIdAndUserId(Long fridgeId, Long userId);
 }
