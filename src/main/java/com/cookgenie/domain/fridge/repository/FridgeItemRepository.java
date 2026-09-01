@@ -10,4 +10,6 @@ public interface FridgeItemRepository extends JpaRepository<FridgeItem, Long> {
     List<FridgeItem> findByFridgeId(Long fridgeId);
 
     List<FridgeItem> findByFridgeIdAndExpiryDateLessThanEqual(Long fridgeId, LocalDate expiryDate);
+
+    void deleteByFridgeId(Long fridgeId);
 }

@@ -16,6 +16,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 냉장고에 등록된 재료(FridgeItem) CRUD를 담당하는 서비스.
+ * 냉장고 자체(생성/조회/삭제)는 {@link FridgeService} 참고.
+ */
 @Service
 @RequiredArgsConstructor
 public class FridgeItemService {
@@ -24,6 +28,7 @@ public class FridgeItemService {
     private final FridgeRepository fridgeRepository;
     private final IngredientRepository ingredientRepository;
 
+    /** 냉장고에 재료 추가. ingredientId가 식재료 마스터(Ingredient)에 존재해야 한다. */
     @Transactional
     public FridgeItemResponse createItem(Long fridgeId, FridgeItemCreateRequest request) {
         Fridge fridge = fridgeRepository.findById(fridgeId)
@@ -45,6 +50,7 @@ public class FridgeItemService {
         return new FridgeItemResponse(fridgeItemRepository.save(item));
     }
 
+    /** 특정 냉장고에 등록된 재료 전체 목록 조회. */
     @Transactional(readOnly = true)
     public List<FridgeItemResponse> getItems(Long fridgeId) {
         if (!fridgeRepository.existsById(fridgeId)) {
@@ -55,11 +61,13 @@ public class FridgeItemService {
                 .toList();
     }
 
+    /** 재료 단건 조회. */
     @Transactional(readOnly = true)
     public FridgeItemResponse getItem(Long fridgeId, Long itemId) {
         return new FridgeItemResponse(getItemInFridge(fridgeId, itemId));
     }
 
+    /** 재료 수정. ingredientId(어떤 식재료인지)는 바꿀 수 없고 수량/단위/보관위치/날짜/메모만 갱신한다. */
     @Transactional
     public FridgeItemResponse updateItem(Long fridgeId, Long itemId, FridgeItemUpdateRequest request) {
         FridgeItem item = getItemInFridge(fridgeId, itemId);
@@ -74,12 +82,14 @@ public class FridgeItemService {
         return new FridgeItemResponse(item);
     }
 
+    /** 재료 삭제. */
     @Transactional
     public void deleteItem(Long fridgeId, Long itemId) {
         FridgeItem item = getItemInFridge(fridgeId, itemId);
         fridgeItemRepository.delete(item);
     }
 
+    /** itemId로 재료를 찾고, 그 재료가 실제로 fridgeId 소속인지까지 확인한다 (다른 냉장고 재료 접근 방지). */
     private FridgeItem getItemInFridge(Long fridgeId, Long itemId) {
         FridgeItem item = fridgeItemRepository.findById(itemId)
                 .orElseThrow(() -> new CustomException(ErrorMessage.FRIDGE_ITEM_NOT_FOUND));

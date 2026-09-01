@@ -12,4 +12,6 @@ public interface FridgeMemberRepository extends JpaRepository<FridgeMember, Long
     List<FridgeMember> findByUserId(Long userId);
 
     Optional<FridgeMember> findByFridgeIdAndUserId(Long fridgeId, Long userId);
+
+    void deleteByFridgeId(Long fridgeId);
 }

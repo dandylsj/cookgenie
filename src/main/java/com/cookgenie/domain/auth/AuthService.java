@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** 회원가입/로그인/로그아웃/탈퇴/토큰 재발급/프로필 조회 등 인증 관련 비즈니스 로직. */
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -28,6 +29,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final RefreshTokenRepository refreshTokenRepository;
 
+    /** 회원가입. 이메일/아이디 중복, 소셜 계정 여부를 확인한 뒤 비밀번호를 BCrypt로 해싱해 저장하고 토큰을 발급한다. */
     @Transactional
     public TokenResponse signup(SignupRequest request) {
         userRepository.findByEmail(request.getEmail()).ifPresent(existing -> {
@@ -52,6 +54,7 @@ public class AuthService {
         return issueTokens(user);
     }
 
+    /** 로그인. 탈퇴 여부와 비밀번호를 확인한 뒤 토큰을 발급한다. */
     @Transactional
     public TokenResponse login(LoginRequest request) {
         User user = userRepository.findByLoginId(request.getLoginId())
@@ -67,6 +70,7 @@ public class AuthService {
         return issueTokens(user);
     }
 
+    /** 로그아웃. 서버에 저장된 refresh token을 삭제한다 (access token 자체는 만료 전까지 유효한 JWT 한계 그대로). */
     @Transactional
     public void logout(String accessToken) {
         jwtUtil.validateToken(accessToken);
@@ -74,6 +78,7 @@ public class AuthService {
         refreshTokenRepository.deleteByUserId(userId);
     }
 
+    /** 회원 탈퇴. 비밀번호 재확인 후 soft delete(status=WITHDRAWN, password 초기화)하고 refresh token을 삭제한다. */
     @Transactional
     public void withdraw(String accessToken, WithdrawRequest request) {
         jwtUtil.validateToken(accessToken);
@@ -90,6 +95,7 @@ public class AuthService {
         refreshTokenRepository.deleteByUserId(user.getId());
     }
 
+    /** 토큰 재발급. refresh token을 검증하고 DB에 저장된 값과 일치하는지 확인한 뒤 access/refresh 토큰을 새로 발급한다(로테이션). */
     @Transactional
     public TokenResponse reissueToken(RefreshTokenReissueRequest request) {
         jwtUtil.validateRefreshToken(request.getRefreshToken());
@@ -114,6 +120,7 @@ public class AuthService {
         return new TokenResponse(newAccessToken, newRefreshToken);
     }
 
+    /** access token으로 로그인된 사용자의 프로필 정보를 조회한다. */
     @Transactional(readOnly = true)
     public UserInfoResponse getUserInfo(String accessToken) {
         jwtUtil.validateToken(accessToken);
@@ -125,6 +132,7 @@ public class AuthService {
         return new UserInfoResponse(user);
     }
 
+    /** access/refresh 토큰을 새로 만들고, 기존 refresh token row가 있으면 갱신하며 없으면 새로 저장한다. */
     private TokenResponse issueTokens(User user) {
         String accessToken = jwtUtil.generateAccessToken(user.getId(), user.getLoginId(), user.getNickname());
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
