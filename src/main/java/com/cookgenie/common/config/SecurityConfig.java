@@ -28,6 +28,10 @@ public class SecurityConfig {
             "/auth/sign",
             "/auth/login",
             "/auth/reissue",
+            "/actuator/health",
+            "/swagger-ui/**",
+            "/swagger-ui.html",
+            "/v3/api-docs/**",
     };
 
     @Bean
