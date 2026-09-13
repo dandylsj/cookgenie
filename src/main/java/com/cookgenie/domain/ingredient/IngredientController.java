@@ -1,0 +1,52 @@
+package com.cookgenie.domain.ingredient;
+
+import com.cookgenie.common.model.response.GlobalResponse;
+import com.cookgenie.domain.ingredient.dto.CategoryResponse;
+import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
+import com.cookgenie.domain.ingredient.dto.IngredientResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/** 식재료 마스터(Ingredient) 검색/등록 API. 냉장고에 재료를 추가할 때 ingredientId를 얻기 위해 사용한다. */
+@Tag(name = "식재료(Ingredient)", description = "식재료 마스터 검색/등록, 카테고리 조회 API")
+@RestController
+@RequestMapping("/ingredients")
+@RequiredArgsConstructor
+public class IngredientController {
+
+    private final IngredientService ingredientService;
+
+    /** GET /ingredients?keyword= - 이름으로 식재료 검색 (keyword 없으면 전체 목록) */
+    @Operation(summary = "식재료 검색", description = "이름에 keyword가 포함된 식재료를 검색합니다. keyword가 없으면 전체 목록을 반환합니다.")
+    @GetMapping
+    public ResponseEntity<GlobalResponse<List<IngredientResponse>>> searchIngredients(
+            @Parameter(description = "검색 키워드") @RequestParam(required = false) String keyword) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.searchIngredients(keyword)));
+    }
+
+    /** GET /ingredients/categories - 식재료 카테고리 전체 목록 조회 */
+    @Operation(summary = "카테고리 목록 조회", description = "식재료 카테고리 전체 목록을 조회합니다.")
+    @GetMapping("/categories")
+    public ResponseEntity<GlobalResponse<List<CategoryResponse>>> getCategories() {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.getCategories()));
+    }
+
+    /** POST /ingredients - 목록에 없는 새 식재료 등록 (사용자 직접 입력) */
+    @Operation(summary = "식재료 등록", description = "검색 결과에 없는 식재료를 사용자가 직접 등록합니다.")
+    @PostMapping
+    public ResponseEntity<GlobalResponse<IngredientResponse>> createIngredient(
+            @Valid @RequestBody IngredientCreateRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.createIngredient(request)));
+    }
+}
