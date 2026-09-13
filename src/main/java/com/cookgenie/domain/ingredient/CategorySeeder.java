@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-/** 카테고리 테이블이 비어 있을 때 기본 식재료 카테고리를 채워 넣는다. */
+/** 기본 식재료 카테고리 중 아직 없는 것만 채워 넣는다. 이미 같은 이름의 카테고리가 있으면 건너뛴다. */
 @Component
 @RequiredArgsConstructor
 public class CategorySeeder implements CommandLineRunner {
@@ -21,10 +21,8 @@ public class CategorySeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (categoryRepository.count() > 0) {
-            return;
-        }
-        DEFAULT_CATEGORIES.forEach(name ->
-                categoryRepository.save(Category.builder().name(name).build()));
+        DEFAULT_CATEGORIES.stream()
+                .filter(name -> categoryRepository.findByName(name).isEmpty())
+                .forEach(name -> categoryRepository.save(Category.builder().name(name).build()));
     }
 }
