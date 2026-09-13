@@ -14,6 +14,7 @@ public class FridgeItemResponse {
     private final Long fridgeId;
     private final Long ingredientId;
     private final String ingredientName;
+    private final String categoryName;
     private final BigDecimal quantity;
     private final String unit;
     private final StorageLocation storageLocation;
@@ -28,6 +29,9 @@ public class FridgeItemResponse {
         this.fridgeId = item.getFridge().getId();
         this.ingredientId = item.getIngredient().getId();
         this.ingredientName = item.getIngredient().getName();
+        this.categoryName = item.getIngredient().getCategory() != null
+                ? item.getIngredient().getCategory().getName()
+                : null;
         this.quantity = item.getQuantity();
         this.unit = item.getUnit();
         this.storageLocation = item.getStorageLocation();
