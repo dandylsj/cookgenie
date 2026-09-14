@@ -65,6 +65,38 @@ public class ClaudeRecipeClient {
         }
     }
 
+    /** 유튜브 영상 제목/설명에서 레시피 정보를 추출한다. 설명이 부실하면 제목과 일반 요리 지식으로 추정한다. */
+    public Optional<GeneratedRecipe> parseFromYoutube(String videoTitle, String videoDescription) {
+        String description = videoDescription == null || videoDescription.isBlank()
+                ? "(설명 없음)"
+                : videoDescription.substring(0, Math.min(videoDescription.length(), 2000));
+
+        String prompt = "다음은 유튜브 요리 영상의 제목과 설명이다. 이 영상의 레시피 정보를 최대한 정확하게 추출해줘. "
+                + "설명에 재료나 조리법이 명확히 나와있지 않으면 제목과 일반적인 요리 지식을 바탕으로 추정해도 돼. "
+                + "record_generated_recipe 도구를 호출해서 결과를 알려줘.\n\n"
+                + "제목: " + videoTitle + "\n\n설명:\n" + description;
+
+        ClaudeMessageRequest request = new ClaudeMessageRequest(
+                model,
+                1200,
+                List.of(new ClaudeMessageRequest.Message("user", prompt)),
+                List.of(recipeTool()),
+                Map.of("type", "tool", "name", TOOL_NAME)
+        );
+
+        try {
+            ClaudeMessageResponse response = restClient.post()
+                    .body(request)
+                    .retrieve()
+                    .body(ClaudeMessageResponse.class);
+
+            return Optional.ofNullable(extractRecipe(response));
+        } catch (Exception e) {
+            log.warn("[Claude 유튜브 레시피 파싱] 호출 실패 - title={}, error={}", videoTitle, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     private GeneratedRecipe extractRecipe(ClaudeMessageResponse response) {
         if (response == null || response.content() == null) {
             return null;

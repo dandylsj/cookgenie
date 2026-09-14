@@ -41,6 +41,7 @@ Authorization: Bearer {accessToken}
 | 탈퇴한 계정으로 로그인 시도 | 409 | 탈퇴한 계정입니다. |
 | 소셜 로그인 계정으로 가입 시도 | 422 | 소셜 로그인으로 가입된 계정입니다. |
 | 냉장고 접근 권한 없음(멤버 아님) | 403 | 접근 권한이 없습니다. |
+| 유튜브 영상 없음 | 404 | 유튜브 영상을 찾을 수 없습니다. |
 
 ---
 
@@ -419,17 +420,50 @@ Authorization: Bearer {accessToken}
 
 ---
 
-### 5.3 레시피 목록 조회 — `GET /recipes`
+### 5.3 유튜브 레시피 검색 — `GET /fridges/{fridgeId}/recipes/youtube/search?keyword=&limit=`
+
+YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되지 않는 미리보기**입니다 — 실제로 레시피에 반영하려면 5.4(가져오기)를 별도로 호출해야 합니다.
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| keyword | String | X | 검색어. 생략하면 냉장고 재료 이름(최대 3개)으로 자동 구성 |
+| limit | Integer | X | 최대 개수 (기본 10) |
+
+**Response** `200 OK` — `GlobalResponse<List<YoutubeVideoSummaryResponse>>`
+
+**에러**: 냉장고 없음(404), 냉장고에 재료 없음(400) — `keyword` 없이 재료도 없는 냉장고로 검색한 경우
+
+**`YoutubeVideoSummaryResponse`**: `videoId`, `title`, `description`, `channelTitle`, `thumbnailUrl`, `publishedAt`, `videoUrl`
+
+---
+
+### 5.4 유튜브 레시피 가져오기 — `POST /recipes/youtube/import`
+
+5.3에서 찾은 영상의 `videoId`로 영상 상세(제목/설명/채널명)를 조회하고, 그 내용을 Claude에게 전달해 재료/조리법/1인분 영양정보를 추출한 뒤 `recipeType=YOUTUBE`로 저장합니다. 설명란에 재료/조리법이 명확하지 않으면 Claude가 제목과 일반적인 요리 지식으로 추정합니다. **이미 가져온 영상(`sourceUrl` 기준)이면 다시 호출하지 않고 기존 레시피를 그대로 반환**합니다.
+
+**Request Body**
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| videoId | String | O |
+
+**Response** `200 OK` — `GlobalResponse<RecipeResponse>` (Claude 호출 때문에 응답까지 수 초 걸릴 수 있음). 저장된 레시피는 `sourceUrl`(영상 URL)과 `authorNickname`(채널명)이 채워집니다.
+
+**에러**: 유튜브 영상 없음(404) — `videoId`가 잘못되었거나 조회에 실패한 경우, 레시피 생성 실패(502 — Claude 호출 실패/크레딧 부족 등)
+
+---
+
+### 5.5 레시피 목록 조회 — `GET /recipes`
 
 전체 레시피를 최신 등록순으로 반환합니다. `matchedIngredientCount`/`totalIngredientCount`는 냉장고 문맥이 아니라서 항상 `null`입니다.
 
 **Response** `200 OK` — `GlobalResponse<List<RecipeSummaryResponse>>`
 
-### 5.4 레시피 상세 조회 — `GET /recipes/{id}`
+### 5.6 레시피 상세 조회 — `GET /recipes/{id}`
 
 **Response** `200 OK` — `GlobalResponse<RecipeResponse>` · **에러**: 레시피 없음(404)
 
-### 5.5 레시피 삭제 — `DELETE /recipes/{id}`
+### 5.7 레시피 삭제 — `DELETE /recipes/{id}`
 
 연결된 재료(`RecipeIngredient`)와 태그(`RecipeTag`)도 함께 삭제합니다.
 
@@ -470,6 +504,5 @@ Authorization: Bearer {accessToken}
 - 냉장고 멤버 초대 API (`FridgeMember`를 `OWNER`가 만들 때 자동 등록만 되고, 다른 사용자를 멤버로 추가하는 API는 없음)
 - **`FridgeItem`/레시피 API들의 멤버 권한 검증** — 현재 냉장고 존재 여부만 확인하고 요청자가 해당 냉장고 멤버인지는 확인하지 않음 (2번 냉장고 API는 이미 `FridgeMember` 기반 검증 적용됨)
 - 로그아웃 시 access token 즉시 무효화 (현재는 만료시간까지 유효한 stateless JWT 한계 그대로)
-- **유튜브 레시피 연동**(2단계) — YouTube Data API로 요리 영상을 검색해 `recipeType=YOUTUBE`로 저장하는 기능. 별도 API 키 발급 필요
 - 식단 기록(MealLog) 관련 API
 - 레시피 좋아요/저장(`likeCount`/`saveCount` 증가), 조회수 집계
