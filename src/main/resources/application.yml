@@ -1,0 +1,39 @@
+spring:
+  config:
+    import: optional:classpath:application-secrets.yml
+
+  application:
+    name: cookgenie
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:cookgenie}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: false
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+jwt:
+  secret-key: ${JWT_SECRET_KEY}
+
+springdoc:
+  api-docs:
+    version: openapi_3_0
+  swagger-ui:
+    path: /swagger-ui.html
+
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY}
+  model: claude-haiku-4-5-20251001
