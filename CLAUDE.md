@@ -23,13 +23,16 @@
 DB_PASSWORD: 여기에_로컬_MySQL_비밀번호
 JWT_SECRET_KEY: 아무_base64_문자열
 ANTHROPIC_API_KEY: sk-ant-...
+YOUTUBE_API_KEY: AIza...
 ```
 
-이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+
+`YOUTUBE_API_KEY`는 Google Cloud Console에서 **YouTube Data API v3**를 활성화하고 발급받은 API 키입니다(무료지만 일일 할당량 있음). 유튜브 레시피 검색/가져오기 기능에 쓰입니다.
 
 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USERNAME`은 로컬 기본값(`localhost`/`3306`/`cookgenie`/`root`)이 있어서 별도 설정 없이 그대로 씁니다. 로컬 MySQL은 `sql/create_database.sql`로 `cookgenie` DB만 만들면 테이블은 앱 기동 시 자동 생성됩니다.
 
-**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다.
+**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`YOUTUBE_API_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요.**
 
 ### 지나간 사고: application.yml이 통째로 배포에서 빠져있었던 문제
 
@@ -49,7 +52,7 @@ ANTHROPIC_API_KEY: sk-ant-...
 | Fridge | 완료 — 생성/목록/단건조회/삭제 (OWNER만 삭제 가능) |
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
-| Recipe | **1단계 완료**: AI 레시피 생성(냉장고 재료 기반), 재료 기반 레시피 추천, 목록/상세/삭제. **2단계 미착수**: 유튜브 레시피 연동 |
+| Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제 |
 | MealLog / NutritionGoal | 엔티티만 있고 API 없음 |
 | 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 | 미구현 |
 
@@ -68,9 +71,15 @@ ANTHROPIC_API_KEY: sk-ant-...
 - `GET /recipes`, `GET /recipes/{id}`, `DELETE /recipes/{id}` — 기본 조회/삭제.
 - `Recipe` 엔티티에 원래 없던 `instructions`(조리법 TEXT) 컬럼을 추가함.
 
+## Recipe 2단계 — 유튜브 레시피 연동
+
+- `GET /fridges/{fridgeId}/recipes/youtube/search?keyword=&limit=` — YouTube Data API v3 `search.list`로 요리 영상을 검색. `keyword`를 생략하면 냉장고 재료 이름(최대 3개)으로 검색어를 자동 구성. **결과는 저장되지 않는 미리보기**(videoId/제목/설명/채널명/썸네일/영상 URL)이고, 실제 레시피로 저장하려면 가져오기 API를 호출해야 함.
+- `POST /recipes/youtube/import` (`{"videoId": "..."}`) — `videos.list`로 영상 상세(제목/설명/채널명)를 조회한 뒤, 제목+설명을 Claude에게 넘겨서 `ClaudeRecipeClient.parseFromYoutube()`로 재료/조리법/1인분 영양정보를 추출(설명이 부실하면 제목+일반 지식으로 추정). `recipeType=YOUTUBE`, `sourceUrl`, `authorNickname`(=채널명)으로 저장. **같은 videoId를 다시 가져오면 재호출 없이 기존 레시피를 그대로 반환**(sourceUrl 기준 중복 방지, `Ingredient` 재사용 설계와 동일한 철학).
+- 새 클라이언트: `domain/recipe/external/YoutubeSearchClient`(YouTube Data API 래퍼), `ClaudeRecipeClient.parseFromYoutube()`(추가된 메서드, 기존 `recipeTool()` 스키마 재사용).
+- `RecipeRepository.findBySourceUrl()` 추가.
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
-- **레시피 2단계**: 유튜브 레시피 연동 (YouTube Data API 키 필요, 영상 설명란에서 재료 추출은 Claude 파싱 필요할 가능성 높음)
 - `FridgeItem`/`Recipe` API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
 - 냉장고 멤버 초대 API
 - 프론트엔드의 "영양정보 동기화" 버튼 — 이제 없는 엔드포인트(`/ingredients/sync-raw-materials`)를 호출하고 있어서 프론트에서 제거 필요
