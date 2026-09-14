@@ -336,7 +336,11 @@ Authorization: Bearer {accessToken}
 
 ### 4.3 식재료 등록 — `POST /ingredients`
 
-검색 결과에 없는 식재료를 사용자가 직접 등록합니다. `dataSource=USER_INPUT`, `isVerified=false`로 생성됩니다.
+검색 결과에 없는 식재료를 등록합니다. **동작 방식**:
+
+1. 정확히 같은 이름의 식재료가 이미 있으면 새로 만들지 않고 **그대로 재사용**합니다(중복 방지) — 다른 사용자가 이미 "양파"를 등록해뒀다면 그 영양정보를 그대로 돌려받습니다.
+2. 완전히 새 이름이면 **Claude(Anthropic API)에게 100g 기준 평균 영양정보를 추정**시켜서 `NutritionInfo`와 함께 저장합니다. 이때 `dataSource=LLM_ESTIMATED`, `isVerified=false`로 생성됩니다.
+3. Claude 호출이 실패하거나(계정 크레딧 부족 등) 실제 식재료가 아니라고 판단되면, 영양정보 없이 `dataSource=USER_INPUT`으로 등록됩니다(기존과 동일한 폴백).
 
 **Request Body** (`IngredientCreateRequest`)
 
@@ -344,9 +348,9 @@ Authorization: Bearer {accessToken}
 |---|---|---|
 | name | String | O |
 | categoryName | String | O (없는 이름이면 카테고리 자동 생성) |
-| defaultUnit | String | X |
+| defaultUnit | String | X (비워두면 Claude가 추정한 단위를 씀) |
 
-**Response** `200 OK` — `GlobalResponse<IngredientResponse>`
+**Response** `200 OK` — `GlobalResponse<IngredientResponse>` (LLM 호출이 걸리면 응답까지 1~2초 정도 걸릴 수 있음)
 
 ### 4.4 식재료 수정 — `PUT /ingredients/{id}`
 
@@ -357,16 +361,6 @@ Authorization: Bearer {accessToken}
 ### 4.5 식재료 삭제 — `DELETE /ingredients/{id}`
 
 **Response** `204 No Content` · **에러**: 식재료 없음(404), 이미 어떤 냉장고에 등록되어 삭제 불가(409)
-
-### 4.6 원재료 영양정보 동기화 — `POST /ingredients/sync-raw-materials`
-
-농촌진흥청 "전국통합식품영양성분정보(원재료성식품)" 공공데이터 전체(약 3,700건)를 가져와 `Ingredient`+`NutritionInfo`를 채우거나 갱신합니다. 이름이 이미 있으면 최신값으로 덮어쓰므로 재실행해도 안전합니다. 원본이 연 1회 정도 갱신되기 때문에 매달 1일 새벽 3시에도 자동 실행되며, 즉시 반영이 필요할 때만 수동으로 호출하면 됩니다. 외부 API 호출 특성상 응답까지 **1분 이상** 걸릴 수 있습니다.
-
-**Response** `200 OK` — `GlobalResponse<RawMaterialSyncResponse>`
-
-```json
-{ "success": true, "data": { "totalFetched": 3704, "created": 3696, "updated": 8, "failed": 0 }, "message": null }
-```
 
 ### 공통 DTO
 

@@ -4,7 +4,6 @@ import com.cookgenie.common.model.response.GlobalResponse;
 import com.cookgenie.domain.ingredient.dto.CategoryResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
 import com.cookgenie.domain.ingredient.dto.IngredientResponse;
-import com.cookgenie.domain.ingredient.dto.RawMaterialSyncResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -47,8 +46,12 @@ public class IngredientController {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.getCategories()));
     }
 
-    /** POST /ingredients - 목록에 없는 새 식재료 등록 (사용자 직접 입력) */
-    @Operation(summary = "식재료 등록", description = "검색 결과에 없는 식재료를 사용자가 직접 등록합니다.")
+    /** POST /ingredients - 목록에 없는 새 식재료 등록 (같은 이름이 있으면 재사용, 없으면 Claude로 영양정보 추정) */
+    @Operation(
+            summary = "식재료 등록",
+            description = "검색 결과에 없는 식재료를 등록합니다. 같은 이름의 식재료가 이미 있으면 그대로 재사용하고, "
+                    + "완전히 새 이름이면 Claude가 100g 기준 평균 영양정보를 추정해서 함께 저장합니다."
+    )
     @PostMapping
     public ResponseEntity<GlobalResponse<IngredientResponse>> createIngredient(
             @Valid @RequestBody IngredientCreateRequest request) {
@@ -70,16 +73,5 @@ public class IngredientController {
     public ResponseEntity<Void> deleteIngredient(@Parameter(description = "식재료 ID") @PathVariable Long id) {
         ingredientService.deleteIngredient(id);
         return ResponseEntity.noContent().build();
-    }
-
-    /** POST /ingredients/sync-raw-materials - 농촌진흥청 원재료 영양성분 공공데이터 전체 동기화 */
-    @Operation(
-            summary = "원재료 영양정보 동기화",
-            description = "농촌진흥청 \"전국통합식품영양성분정보(원재료성식품)\" 공공데이터 전체를 가져와 식재료/영양정보를 채우거나 갱신합니다. "
-                    + "매달 자동으로도 실행되지만, 즉시 반영이 필요할 때 수동으로 호출할 수 있습니다."
-    )
-    @PostMapping("/sync-raw-materials")
-    public ResponseEntity<GlobalResponse<RawMaterialSyncResponse>> syncRawMaterials() {
-        return ResponseEntity.ok(GlobalResponse.success(ingredientService.syncRawMaterialsFromMfds()));
     }
 }
