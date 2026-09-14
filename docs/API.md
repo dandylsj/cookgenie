@@ -242,10 +242,18 @@ Authorization: Bearer {accessToken}
 | carbohydrateG | BigDecimal \| null |
 | proteinG | BigDecimal \| null |
 | fatG | BigDecimal \| null |
+| referenceAmount | Integer \| null |
+| referenceUnit | String \| null |
+| referenceCalories | Integer \| null |
+| referenceCarbohydrateG | BigDecimal \| null |
+| referenceProteinG | BigDecimal \| null |
+| referenceFatG | BigDecimal \| null |
 | createdAt | LocalDateTime |
 | updatedAt | LocalDateTime |
 
 `calories`/`carbohydrateG`/`proteinG`/`fatG`는 식재료의 `NutritionInfo`(100g/ml 기준)를 `quantity`만큼 환산한 값입니다. **`unit`이 그 재료의 영양정보 기준 단위(`referenceUnit`, 보통 `g`)와 정확히 일치할 때만 계산**되고, 단위가 다르면(예: `개`, `큰술`) 억지로 환산하지 않고 전부 `null`로 내려갑니다.
+
+`reference*` 필드는 환산 없이 그 재료의 "기준량(`referenceAmount` `referenceUnit`, 보통 100g)당" 원래 값을 그대로 보여줍니다 — 예를 들어 화면에 "100g당 탄수화물 6.5g"처럼 참고용으로 같이 띄울 때 씁니다. 영양정보 자체가 없는 재료(수동 등록 등)면 전부 `null`입니다.
 
 ---
 
@@ -374,6 +382,14 @@ Authorization: Bearer {accessToken}
 | defaultUnit | String \| null |
 | dataSource | String (`OFFICIAL_DB` \| `OCR` \| `LLM_ESTIMATED` \| `USER_INPUT`) |
 | isVerified | Boolean |
+| referenceAmount | Integer \| null |
+| referenceUnit | String \| null |
+| referenceCalories | Integer \| null |
+| referenceCarbohydrateG | BigDecimal \| null |
+| referenceProteinG | BigDecimal \| null |
+| referenceFatG | BigDecimal \| null |
+
+`reference*`는 그 재료의 기준량(보통 100g)당 영양정보입니다. 냉장고에 추가하기 전 검색 단계에서도 "100g당 탄단지"를 미리 볼 수 있도록 포함했습니다. 영양정보가 없는 재료(수동 등록 등)는 전부 `null`입니다.
 
 **`CategoryResponse`**: `id`, `name`, `iconUrl`
 

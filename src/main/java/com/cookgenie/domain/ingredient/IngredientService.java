@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,13 +46,21 @@ public class IngredientService {
     private final FridgeItemRepository fridgeItemRepository;
     private final MfdsRawMaterialClient mfdsRawMaterialClient;
 
-    /** 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다. */
+    /** 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다. 100g 기준 영양정보를 함께 내려준다. */
     @Transactional(readOnly = true)
     public List<IngredientResponse> searchIngredients(String keyword) {
         List<Ingredient> ingredients = (keyword == null || keyword.isBlank())
                 ? ingredientRepository.findAll()
                 : ingredientRepository.findByNameContaining(keyword);
-        return ingredients.stream().map(IngredientResponse::new).toList();
+
+        List<Long> ingredientIds = ingredients.stream().map(Ingredient::getId).toList();
+        Map<Long, NutritionInfo> nutritionByIngredientId = nutritionInfoRepository.findByIngredientIdIn(ingredientIds)
+                .stream()
+                .collect(Collectors.toMap(n -> n.getIngredient().getId(), n -> n));
+
+        return ingredients.stream()
+                .map(ingredient -> new IngredientResponse(ingredient, nutritionByIngredientId.get(ingredient.getId())))
+                .toList();
     }
 
     /** 식재료 카테고리 전체 목록 조회. */
@@ -74,7 +83,7 @@ public class IngredientService {
                 .isVerified(false)
                 .build();
 
-        return new IngredientResponse(ingredientRepository.save(ingredient));
+        return new IngredientResponse(ingredientRepository.save(ingredient), null);
     }
 
     /** 식재료 이름/카테고리/기본 단위를 수정한다. 잘못 고른 카테고리를 바로잡을 때 사용한다. */
@@ -84,7 +93,8 @@ public class IngredientService {
                 .orElseThrow(() -> new CustomException(ErrorMessage.INGREDIENT_NOT_FOUND));
         Category category = findOrCreateCategory(request.getCategoryName());
         ingredient.update(request.getName(), category, request.getDefaultUnit());
-        return new IngredientResponse(ingredient);
+        NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(ingredientId).orElse(null);
+        return new IngredientResponse(ingredient, nutritionInfo);
     }
 
     /** 식재료를 삭제한다. 이미 어떤 냉장고에 등록되어 있는 식재료는 삭제할 수 없다. */
@@ -162,22 +172,32 @@ public class IngredientService {
         Category category = categoryCache.computeIfAbsent(item.foodLv3Nm(), this::findOrCreateCategory);
         String[] referenceAmountAndUnit = parseReferenceAmountAndUnit(item.nutConSrtrQua());
 
-        boolean isNew = ingredientRepository.findByName(name).isEmpty();
-        Ingredient ingredient = ingredientRepository.findByName(name)
-                .map(existing -> {
-                    existing.update(name, category, referenceAmountAndUnit[1]);
-                    return existing;
-                })
-                .orElseGet(() -> ingredientRepository.save(
-                        Ingredient.builder()
-                                .name(name)
-                                .category(category)
-                                .ingredientType(IngredientType.RAW)
-                                .defaultUnit(referenceAmountAndUnit[1])
-                                .dataSource(DataSource.OFFICIAL_DB)
-                                .isVerified(true)
-                                .build()
-                ));
+        List<Ingredient> existingMatches = ingredientRepository.findAllByName(name);
+        boolean isNew = existingMatches.isEmpty();
+
+        Ingredient ingredient;
+        if (isNew) {
+            ingredient = ingredientRepository.save(
+                    Ingredient.builder()
+                            .name(name)
+                            .category(category)
+                            .ingredientType(IngredientType.RAW)
+                            .defaultUnit(referenceAmountAndUnit[1])
+                            .dataSource(DataSource.OFFICIAL_DB)
+                            .isVerified(true)
+                            .build()
+            );
+        } else {
+            if (existingMatches.size() > 1) {
+                log.warn("[MFDS 동기화] 이름이 중복된 식재료 발견 - name={}, ids={} (OFFICIAL_DB 항목을 우선 갱신)",
+                        name, existingMatches.stream().map(Ingredient::getId).toList());
+            }
+            ingredient = existingMatches.stream()
+                    .filter(i -> i.getDataSource() == DataSource.OFFICIAL_DB)
+                    .findFirst()
+                    .orElse(existingMatches.get(0));
+            ingredient.update(name, category, referenceAmountAndUnit[1]);
+        }
 
         NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(ingredient.getId())
                 .orElseGet(() -> NutritionInfo.builder().ingredient(ingredient).build());

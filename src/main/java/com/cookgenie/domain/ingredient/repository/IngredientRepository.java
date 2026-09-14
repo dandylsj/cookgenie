@@ -10,7 +10,7 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
 
     Optional<Ingredient> findByBarcode(String barcode);
 
-    Optional<Ingredient> findByName(String name);
+    List<Ingredient> findAllByName(String name);
 
     List<Ingredient> findByNameContaining(String name);
 
