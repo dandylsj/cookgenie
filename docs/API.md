@@ -231,14 +231,21 @@ Authorization: Bearer {accessToken}
 | fridgeId | Long |
 | ingredientId | Long |
 | ingredientName | String |
+| categoryName | String \| null |
 | quantity | BigDecimal |
 | unit | String |
 | storageLocation | String (`REFRIGERATED` \| `FROZEN` \| `ROOM_TEMP`) |
 | purchasedAt | LocalDate |
 | expiryDate | LocalDate \| null |
 | memo | String \| null |
+| calories | Integer \| null |
+| carbohydrateG | BigDecimal \| null |
+| proteinG | BigDecimal \| null |
+| fatG | BigDecimal \| null |
 | createdAt | LocalDateTime |
 | updatedAt | LocalDateTime |
+
+`calories`/`carbohydrateG`/`proteinG`/`fatG`는 식재료의 `NutritionInfo`(100g/ml 기준)를 `quantity`만큼 환산한 값입니다. **`unit`이 그 재료의 영양정보 기준 단위(`referenceUnit`, 보통 `g`)와 정확히 일치할 때만 계산**되고, 단위가 다르면(예: `개`, `큰술`) 억지로 환산하지 않고 전부 `null`로 내려갑니다.
 
 ---
 
@@ -302,6 +309,73 @@ Authorization: Bearer {accessToken}
 **Response** `204 No Content` (바디 없음)
 
 **에러**: 냉장고 재료 없음(404)
+
+---
+
+## 4. 식재료 API (`/ingredients`)
+
+**전부 인증 필요.**
+
+### 4.1 식재료 검색 — `GET /ingredients?keyword=`
+
+이름에 `keyword`가 포함된 식재료를 검색합니다. `keyword`가 없으면 전체 목록을 반환합니다. 냉장고에 재료를 추가하기 전, `ingredientId`를 얻기 위해 사용합니다.
+
+**Response** `200 OK` — `GlobalResponse<List<IngredientResponse>>`
+
+### 4.2 카테고리 목록 조회 — `GET /ingredients/categories`
+
+**Response** `200 OK` — `GlobalResponse<List<CategoryResponse>>`
+
+### 4.3 식재료 등록 — `POST /ingredients`
+
+검색 결과에 없는 식재료를 사용자가 직접 등록합니다. `dataSource=USER_INPUT`, `isVerified=false`로 생성됩니다.
+
+**Request Body** (`IngredientCreateRequest`)
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| name | String | O |
+| categoryName | String | O (없는 이름이면 카테고리 자동 생성) |
+| defaultUnit | String | X |
+
+**Response** `200 OK` — `GlobalResponse<IngredientResponse>`
+
+### 4.4 식재료 수정 — `PUT /ingredients/{id}`
+
+**Request Body** (`IngredientUpdateRequest`) — 필드는 4.3과 동일
+
+**Response** `200 OK` — `GlobalResponse<IngredientResponse>` · **에러**: 식재료 없음(404)
+
+### 4.5 식재료 삭제 — `DELETE /ingredients/{id}`
+
+**Response** `204 No Content` · **에러**: 식재료 없음(404), 이미 어떤 냉장고에 등록되어 삭제 불가(409)
+
+### 4.6 원재료 영양정보 동기화 — `POST /ingredients/sync-raw-materials`
+
+농촌진흥청 "전국통합식품영양성분정보(원재료성식품)" 공공데이터 전체(약 3,700건)를 가져와 `Ingredient`+`NutritionInfo`를 채우거나 갱신합니다. 이름이 이미 있으면 최신값으로 덮어쓰므로 재실행해도 안전합니다. 원본이 연 1회 정도 갱신되기 때문에 매달 1일 새벽 3시에도 자동 실행되며, 즉시 반영이 필요할 때만 수동으로 호출하면 됩니다. 외부 API 호출 특성상 응답까지 **1분 이상** 걸릴 수 있습니다.
+
+**Response** `200 OK` — `GlobalResponse<RawMaterialSyncResponse>`
+
+```json
+{ "success": true, "data": { "totalFetched": 3704, "created": 3696, "updated": 8, "failed": 0 }, "message": null }
+```
+
+### 공통 DTO
+
+**`IngredientResponse`**
+
+| 필드 | 타입 |
+|---|---|
+| id | Long |
+| name | String |
+| categoryId | Long \| null |
+| categoryName | String \| null |
+| ingredientType | String (`RAW` \| `PROCESSED`) |
+| defaultUnit | String \| null |
+| dataSource | String (`OFFICIAL_DB` \| `OCR` \| `LLM_ESTIMATED` \| `USER_INPUT`) |
+| isVerified | Boolean |
+
+**`CategoryResponse`**: `id`, `name`, `iconUrl`
 
 ---
 

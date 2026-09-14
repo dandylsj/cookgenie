@@ -10,6 +10,8 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
 
     Optional<Ingredient> findByBarcode(String barcode);
 
+    Optional<Ingredient> findByName(String name);
+
     List<Ingredient> findByNameContaining(String name);
 
     List<Ingredient> findByDataSourceAndIsVerified(DataSource dataSource, Boolean isVerified);

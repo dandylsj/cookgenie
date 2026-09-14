@@ -54,4 +54,10 @@ public class Ingredient extends BaseTimeEntity {
     @Column(name = "is_verified", nullable = false)
     @Builder.Default
     private Boolean isVerified = false;
+
+    public void update(String name, Category category, String defaultUnit) {
+        this.name = name;
+        this.category = category;
+        this.defaultUnit = defaultUnit;
+    }
 }

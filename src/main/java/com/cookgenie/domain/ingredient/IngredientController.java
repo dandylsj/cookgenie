@@ -4,6 +4,8 @@ import com.cookgenie.common.model.response.GlobalResponse;
 import com.cookgenie.domain.ingredient.dto.CategoryResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
 import com.cookgenie.domain.ingredient.dto.IngredientResponse;
+import com.cookgenie.domain.ingredient.dto.RawMaterialSyncResponse;
+import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,8 +13,11 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -48,5 +53,33 @@ public class IngredientController {
     public ResponseEntity<GlobalResponse<IngredientResponse>> createIngredient(
             @Valid @RequestBody IngredientCreateRequest request) {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.createIngredient(request)));
+    }
+
+    /** PUT /ingredients/{id} - 식재료 이름/카테고리/기본 단위 수정 */
+    @Operation(summary = "식재료 수정", description = "잘못 등록한 식재료의 이름, 카테고리, 기본 단위를 수정합니다.")
+    @PutMapping("/{id}")
+    public ResponseEntity<GlobalResponse<IngredientResponse>> updateIngredient(
+            @Parameter(description = "식재료 ID") @PathVariable Long id,
+            @Valid @RequestBody IngredientUpdateRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.updateIngredient(id, request)));
+    }
+
+    /** DELETE /ingredients/{id} - 식재료 삭제 (냉장고에 등록되어 있으면 삭제 불가) */
+    @Operation(summary = "식재료 삭제", description = "식재료를 삭제합니다. 이미 어떤 냉장고에 등록되어 있으면 삭제할 수 없습니다.")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteIngredient(@Parameter(description = "식재료 ID") @PathVariable Long id) {
+        ingredientService.deleteIngredient(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** POST /ingredients/sync-raw-materials - 농촌진흥청 원재료 영양성분 공공데이터 전체 동기화 */
+    @Operation(
+            summary = "원재료 영양정보 동기화",
+            description = "농촌진흥청 \"전국통합식품영양성분정보(원재료성식품)\" 공공데이터 전체를 가져와 식재료/영양정보를 채우거나 갱신합니다. "
+                    + "매달 자동으로도 실행되지만, 즉시 반영이 필요할 때 수동으로 호출할 수 있습니다."
+    )
+    @PostMapping("/sync-raw-materials")
+    public ResponseEntity<GlobalResponse<RawMaterialSyncResponse>> syncRawMaterials() {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.syncRawMaterialsFromMfds()));
     }
 }

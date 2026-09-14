@@ -10,7 +10,9 @@ import com.cookgenie.domain.fridge.entity.FridgeItem;
 import com.cookgenie.domain.fridge.repository.FridgeItemRepository;
 import com.cookgenie.domain.fridge.repository.FridgeRepository;
 import com.cookgenie.domain.ingredient.entity.Ingredient;
+import com.cookgenie.domain.ingredient.entity.NutritionInfo;
 import com.cookgenie.domain.ingredient.repository.IngredientRepository;
+import com.cookgenie.domain.ingredient.repository.NutritionInfoRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class FridgeItemService {
     private final FridgeItemRepository fridgeItemRepository;
     private final FridgeRepository fridgeRepository;
     private final IngredientRepository ingredientRepository;
+    private final NutritionInfoRepository nutritionInfoRepository;
 
     /** 냉장고에 재료 추가. ingredientId가 식재료 마스터(Ingredient)에 존재해야 한다. */
     @Transactional
@@ -47,7 +50,7 @@ public class FridgeItemService {
                 .memo(request.getMemo())
                 .build();
 
-        return new FridgeItemResponse(fridgeItemRepository.save(item));
+        return toResponse(fridgeItemRepository.save(item));
     }
 
     /** 특정 냉장고에 등록된 재료 전체 목록 조회. */
@@ -57,14 +60,14 @@ public class FridgeItemService {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
         return fridgeItemRepository.findByFridgeId(fridgeId).stream()
-                .map(FridgeItemResponse::new)
+                .map(this::toResponse)
                 .toList();
     }
 
     /** 재료 단건 조회. */
     @Transactional(readOnly = true)
     public FridgeItemResponse getItem(Long fridgeId, Long itemId) {
-        return new FridgeItemResponse(getItemInFridge(fridgeId, itemId));
+        return toResponse(getItemInFridge(fridgeId, itemId));
     }
 
     /** 재료 수정. ingredientId(어떤 식재료인지)는 바꿀 수 없고 수량/단위/보관위치/날짜/메모만 갱신한다. */
@@ -79,7 +82,7 @@ public class FridgeItemService {
                 request.getExpiryDate(),
                 request.getMemo()
         );
-        return new FridgeItemResponse(item);
+        return toResponse(item);
     }
 
     /** 재료 삭제. */
@@ -97,5 +100,12 @@ public class FridgeItemService {
             throw new CustomException(ErrorMessage.FRIDGE_ITEM_NOT_FOUND);
         }
         return item;
+    }
+
+    /** 재료의 NutritionInfo를 찾아 수량 기준으로 환산한 응답을 만든다. 영양정보가 없으면 탄단지 필드는 null로 내려간다. */
+    private FridgeItemResponse toResponse(FridgeItem item) {
+        NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(item.getIngredient().getId())
+                .orElse(null);
+        return new FridgeItemResponse(item, nutritionInfo);
     }
 }

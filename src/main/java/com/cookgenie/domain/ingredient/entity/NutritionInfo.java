@@ -60,4 +60,18 @@ public class NutritionInfo extends BaseTimeEntity {
 
     @Column(name = "fiber_g", precision = 5, scale = 1)
     private BigDecimal fiberG;
+
+    public void update(Integer referenceAmount, String referenceUnit, Integer calories,
+                        BigDecimal carbohydrateG, BigDecimal proteinG, BigDecimal fatG,
+                        BigDecimal sugarG, BigDecimal sodiumMg, BigDecimal fiberG) {
+        this.referenceAmount = referenceAmount;
+        this.referenceUnit = referenceUnit;
+        this.calories = calories;
+        this.carbohydrateG = carbohydrateG;
+        this.proteinG = proteinG;
+        this.fatG = fatG;
+        this.sugarG = sugarG;
+        this.sodiumMg = sodiumMg;
+        this.fiberG = fiberG;
+    }
 }
