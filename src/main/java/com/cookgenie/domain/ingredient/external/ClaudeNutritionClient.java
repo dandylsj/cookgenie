@@ -2,6 +2,7 @@ package com.cookgenie.domain.ingredient.external;
 
 import com.cookgenie.common.client.anthropic.ClaudeMessageRequest;
 import com.cookgenie.common.client.anthropic.ClaudeMessageResponse;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,9 +43,16 @@ public class ClaudeNutritionClient {
                 300,
                 List.of(new ClaudeMessageRequest.Message(
                         "user",
-                        "식재료 \"" + ingredientName + "\"의 100g(액체류면 100ml) 기준 평균적인 영양성분을 "
-                                + "record_nutrition_estimate 도구를 호출해서 알려줘. "
-                                + "실제로 존재하는 식재료가 아니거나 판단할 수 없으면 isValidFood를 false로 해줘."
+                        "\"" + ingredientName + "\"이 어떤 음식/식재료인지 먼저 유추해봐. "
+                                + "양파/계란 같은 순수 원재료뿐 아니라, 브랜드명+상품명이 붙은 가공식품이나 냉동식품 "
+                                + "(예: \"하림 통살 유린기\" → 튀긴 닭가슴살 요리, \"하림 안심 꿔바로우\" → 탕수육 계열의 "
+                                + "튀긴 돼지고기 요리, \"오뚜기 진라면\" → 라면, \"비비고 왕교자\" → 만두)도 이름 속 단어들로 "
+                                + "충분히 추측 가능해. 브랜드나 정확한 제품 스펙을 모르더라도, 이름에서 유추한 음식 종류의 "
+                                + "일반적인/평균적인 100g(액체류면 100ml) 기준 영양성분을 record_nutrition_estimate 도구로 "
+                                + "알려줘. 정확하지 않아도 되니 대략적인 추정치면 충분해. "
+                                + "isValidFood는 이름 안에 음식과 관련된 단서가 하나도 없어서 추정 자체가 완전히 불가능할 "
+                                + "때만 false로 하고, 조금이라도 어떤 음식인지 짐작할 수 있다면 반드시 true로 하고 "
+                                + "최선의 추정치를 내놔."
                 )),
                 List.of(nutritionTool()),
                 Map.of("type", "tool", "name", TOOL_NAME)
@@ -81,29 +89,36 @@ public class ClaudeNutritionClient {
                 .orElse(null);
     }
 
+    /**
+     * 속성 순서를 일부러 숫자 추정값 → isValidFood 순으로 배치했다(LinkedHashMap으로 순서 고정).
+     * 모델이 "이 이름이 어떤 음식인지" 추정치를 먼저 채우게 유도한 뒤, 그 추정이 실제로 가능했는지를
+     * 마지막에 판단하게 해서 브랜드/상품명이 섞인 이름을 성급하게 무효 처리하는 걸 줄이기 위함.
+     */
     private Map<String, Object> nutritionTool() {
-        Map<String, Object> properties = Map.of(
-                "isValidFood", Map.of("type", "boolean", "description", "실제로 존재하는 식재료/식품명이 맞는지"),
-                "referenceUnit", Map.of("type", "string", "enum", List.of("g", "ml"), "description", "기준 단위, 고체는 g 액체는 ml"),
-                "calories", Map.of("type", "number", "description", "기준량당 열량(kcal)"),
-                "carbohydrateG", Map.of("type", "number", "description", "기준량당 탄수화물(g)"),
-                "proteinG", Map.of("type", "number", "description", "기준량당 단백질(g)"),
-                "fatG", Map.of("type", "number", "description", "기준량당 지방(g)"),
-                "sugarG", Map.of("type", "number", "description", "기준량당 당류(g)"),
-                "sodiumMg", Map.of("type", "number", "description", "기준량당 나트륨(mg)"),
-                "fiberG", Map.of("type", "number", "description", "기준량당 식이섬유(g)")
-        );
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("referenceUnit", Map.of("type", "string", "enum", List.of("g", "ml"), "description", "기준 단위, 고체는 g 액체는 ml"));
+        properties.put("calories", Map.of("type", "number", "description", "기준량당 열량(kcal)"));
+        properties.put("carbohydrateG", Map.of("type", "number", "description", "기준량당 탄수화물(g)"));
+        properties.put("proteinG", Map.of("type", "number", "description", "기준량당 단백질(g)"));
+        properties.put("fatG", Map.of("type", "number", "description", "기준량당 지방(g)"));
+        properties.put("sugarG", Map.of("type", "number", "description", "기준량당 당류(g)"));
+        properties.put("sodiumMg", Map.of("type", "number", "description", "기준량당 나트륨(mg)"));
+        properties.put("fiberG", Map.of("type", "number", "description", "기준량당 식이섬유(g)"));
+        properties.put("isValidFood", Map.of(
+                "type", "boolean",
+                "description", "위에서 영양성분을 추정할 수 있었는지. 이름에서 음식 종류를 조금이라도 짐작할 수 있었다면 "
+                        + "true, 음식과 관련된 단서가 전혀 없어서 추정 자체가 불가능했을 때만 false"
+        ));
 
-        Map<String, Object> inputSchema = Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of("isValidFood", "referenceUnit", "calories", "carbohydrateG", "proteinG", "fatG")
-        );
+        Map<String, Object> inputSchema = new LinkedHashMap<>();
+        inputSchema.put("type", "object");
+        inputSchema.put("properties", properties);
+        inputSchema.put("required", List.of("referenceUnit", "calories", "carbohydrateG", "proteinG", "fatG", "isValidFood"));
 
-        return Map.of(
-                "name", TOOL_NAME,
-                "description", "식재료의 100g 또는 100ml 기준 평균적인 영양성분 추정치를 기록한다.",
-                "input_schema", inputSchema
-        );
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("name", TOOL_NAME);
+        tool.put("description", "이름에서 유추한 음식/식재료의 100g 또는 100ml 기준 평균적인 영양성분 추정치를 기록한다.");
+        tool.put("input_schema", inputSchema);
+        return tool;
     }
 }
