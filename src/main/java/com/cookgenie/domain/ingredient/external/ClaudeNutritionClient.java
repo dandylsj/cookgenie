@@ -36,26 +36,32 @@ public class ClaudeNutritionClient {
         this.objectMapper = objectMapper;
     }
 
-    /** 식재료 이름으로 영양정보를 추정한다. 실패하거나 실제 식재료가 아니라고 판단되면 empty. */
+    /**
+     * 식재료 이름으로 영양정보를 추정한다. 브랜드+상품명이 있는 가공식품이면 web_search로 실제 제품 정보를
+     * 먼저 찾아보고, 못 찾으면 같은 종류 음식의 일반적인 영양성분으로 추정한다. 실패하거나 실제 식재료가
+     * 아니라고 판단되면 empty.
+     */
     public Optional<NutritionEstimate> estimate(String ingredientName) {
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
-                300,
+                1500,
                 List.of(new ClaudeMessageRequest.Message(
                         "user",
-                        "\"" + ingredientName + "\"이 어떤 음식/식재료인지 먼저 유추해봐. "
-                                + "양파/계란 같은 순수 원재료뿐 아니라, 브랜드명+상품명이 붙은 가공식품이나 냉동식품 "
-                                + "(예: \"하림 통살 유린기\" → 튀긴 닭가슴살 요리, \"하림 안심 꿔바로우\" → 탕수육 계열의 "
-                                + "튀긴 돼지고기 요리, \"오뚜기 진라면\" → 라면, \"비비고 왕교자\" → 만두)도 이름 속 단어들로 "
-                                + "충분히 추측 가능해. 브랜드나 정확한 제품 스펙을 모르더라도, 이름에서 유추한 음식 종류의 "
-                                + "일반적인/평균적인 100g(액체류면 100ml) 기준 영양성분을 record_nutrition_estimate 도구로 "
-                                + "알려줘. 정확하지 않아도 되니 대략적인 추정치면 충분해. "
-                                + "isValidFood는 이름 안에 음식과 관련된 단서가 하나도 없어서 추정 자체가 완전히 불가능할 "
-                                + "때만 false로 하고, 조금이라도 어떤 음식인지 짐작할 수 있다면 반드시 true로 하고 "
-                                + "최선의 추정치를 내놔."
+                        "\"" + ingredientName + "\"의 100g(액체류면 100ml) 기준 영양성분을 알아내야 해. "
+                                + "이름에 브랜드명+상품명이 붙어있어서 구체적인 제품(예: \"하림 통살 유린기\", "
+                                + "\"하림 안심 꿔바로우\", \"오뚜기 진라면\")으로 보이면, web_search 도구로 그 제품의 "
+                                + "실제 영양정보(제품 포장지/제조사 페이지에 적힌 값)를 먼저 검색해봐. 검색으로 정확한 "
+                                + "값을 못 찾으면, 이름에서 유추한 음식 종류(예: 튀긴 닭가슴살 요리, 탕수육 계열 튀김, "
+                                + "라면, 만두)의 일반적인/평균적인 영양성분으로 추정하면 돼 — 정확하지 않아도 되니 "
+                                + "대략적인 추정치면 충분해. "
+                                + "양파/계란처럼 검색이 필요 없는 순수 원재료면 바로 추정해도 돼. "
+                                + "무엇을 하든 마지막에는 반드시 record_nutrition_estimate 도구를 호출해서 결과를 "
+                                + "기록해. isValidFood는 이름 안에 음식과 관련된 단서가 하나도 없어서 추정 자체가 "
+                                + "완전히 불가능할 때만 false로 하고, 조금이라도 어떤 음식인지 짐작할 수 있다면 "
+                                + "반드시 true로 하고 최선의 추정치를 내놔."
                 )),
-                List.of(nutritionTool()),
-                Map.of("type", "tool", "name", TOOL_NAME)
+                List.of(webSearchTool(), nutritionTool()),
+                Map.of("type", "auto")
         );
 
         try {
@@ -87,6 +93,19 @@ public class ClaudeNutritionClient {
                 .map(input -> objectMapper.convertValue(input, NutritionEstimate.class))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * Anthropic 서버사이드 웹 검색 도구. Haiku는 동적 필터링이 붙은 최신 버전(web_search_20260209)을
+     * 지원하지 않아서 기본형(web_search_20250305)을 쓴다. 검색 결과는 같은 응답 안에서 모델에게 바로
+     * 주어지고, 모델이 이어서 record_nutrition_estimate를 호출하는 흐름이라 별도 라운드트립이 필요 없다.
+     */
+    private Map<String, Object> webSearchTool() {
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("type", "web_search_20250305");
+        tool.put("name", "web_search");
+        tool.put("max_uses", 3);
+        return tool;
     }
 
     /**
