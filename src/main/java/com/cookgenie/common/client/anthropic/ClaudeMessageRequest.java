@@ -1,4 +1,4 @@
-package com.cookgenie.domain.ingredient.external;
+package com.cookgenie.common.client.anthropic;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;

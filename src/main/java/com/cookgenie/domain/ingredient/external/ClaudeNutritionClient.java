@@ -1,5 +1,7 @@
 package com.cookgenie.domain.ingredient.external;
 
+import com.cookgenie.common.client.anthropic.ClaudeMessageRequest;
+import com.cookgenie.common.client.anthropic.ClaudeMessageResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -7,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.ObjectMapper;
 
 /** Claude(Anthropic Messages API)에게 식재료 100g 기준 평균 영양정보를 추정해서 물어보는 클라이언트. */
 @Slf4j
@@ -16,17 +19,20 @@ public class ClaudeNutritionClient {
     private static final String TOOL_NAME = "record_nutrition_estimate";
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
     private final String model;
 
     public ClaudeNutritionClient(
             @Value("${anthropic.api-key}") String apiKey,
-            @Value("${anthropic.model}") String model) {
+            @Value("${anthropic.model}") String model,
+            ObjectMapper objectMapper) {
         this.restClient = RestClient.builder()
                 .baseUrl("https://api.anthropic.com/v1/messages")
                 .defaultHeader("x-api-key", apiKey)
                 .defaultHeader("anthropic-version", "2023-06-01")
                 .build();
         this.model = model;
+        this.objectMapper = objectMapper;
     }
 
     /** 식재료 이름으로 영양정보를 추정한다. 실패하거나 실제 식재료가 아니라고 판단되면 empty. */
@@ -69,6 +75,8 @@ public class ClaudeNutritionClient {
         return response.content().stream()
                 .filter(block -> "tool_use".equals(block.type()) && TOOL_NAME.equals(block.name()))
                 .map(ClaudeMessageResponse.ContentBlock::input)
+                .filter(input -> input != null)
+                .map(input -> objectMapper.convertValue(input, NutritionEstimate.class))
                 .findFirst()
                 .orElse(null);
     }

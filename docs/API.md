@@ -389,10 +389,87 @@ Authorization: Bearer {accessToken}
 
 ---
 
+## 5. 레시피 API
+
+**전부 인증 필요.**
+
+### 5.1 AI 레시피 생성 — `POST /fridges/{fridgeId}/recipes/generate`
+
+냉장고에 있는 재료 이름들을 Claude에게 전달해서 만들 수 있는 레시피 하나를 생성하고 저장합니다(`recipeType=AI`). 재료는 냉장고에 있는 것만 쓰라는 게 아니라, 소금/식용유/후추/다진마늘 같은 흔한 기본 양념은 Claude가 알아서 추가할 수 있습니다 — 그렇게 추가된 재료는 `RecipeIngredient.ingredientId`가 `null`로 텍스트만 표시됩니다.
+
+**Request Body** (`AiRecipeGenerateRequest`, 바디 자체를 생략해도 됨)
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| note | String | X — 예: "매콤하게", "국물 요리로" 같은 추가 요청사항 |
+
+**Response** `200 OK` — `GlobalResponse<RecipeResponse>` (Claude 호출 때문에 응답까지 수 초 걸릴 수 있음)
+
+**에러**: 냉장고 없음(404), 냉장고에 재료 없음(400), 레시피 생성 실패(502 — Claude 호출 실패/크레딧 부족 등)
+
+---
+
+### 5.2 재료 기반 레시피 추천 — `GET /fridges/{fridgeId}/recipes/recommendations?limit=`
+
+냉장고 재료와 겹치는 재료가 많은 레시피 순으로 정렬해서 추천합니다(겹치는 비율 우선, 동률이면 겹치는 개수 우선). **하나도 안 겹치는 레시피는 목록에서 빠집니다.** `limit` 생략 시 기본 20개.
+
+**Response** `200 OK` — `GlobalResponse<List<RecipeSummaryResponse>>` (각 항목에 `matchedIngredientCount`/`totalIngredientCount` 포함)
+
+**에러**: 냉장고 없음(404)
+
+---
+
+### 5.3 레시피 목록 조회 — `GET /recipes`
+
+전체 레시피를 최신 등록순으로 반환합니다. `matchedIngredientCount`/`totalIngredientCount`는 냉장고 문맥이 아니라서 항상 `null`입니다.
+
+**Response** `200 OK` — `GlobalResponse<List<RecipeSummaryResponse>>`
+
+### 5.4 레시피 상세 조회 — `GET /recipes/{id}`
+
+**Response** `200 OK` — `GlobalResponse<RecipeResponse>` · **에러**: 레시피 없음(404)
+
+### 5.5 레시피 삭제 — `DELETE /recipes/{id}`
+
+연결된 재료(`RecipeIngredient`)와 태그(`RecipeTag`)도 함께 삭제합니다.
+
+**Response** `204 No Content` · **에러**: 레시피 없음(404)
+
+---
+
+### 공통 DTO
+
+**`RecipeResponse`** (상세)
+
+| 필드 | 타입 |
+|---|---|
+| id | Long |
+| title | String |
+| recipeType | String (`AI` \| `YOUTUBE` \| `USER`) |
+| cookingType | String \| null |
+| instructions | String[] — 조리 순서, 단계별 문장 배열 |
+| sourceUrl | String \| null |
+| authorNickname | String \| null |
+| servingSize | Integer \| null |
+| caloriesPerServing | Integer \| null |
+| carbohydrateG / proteinG / fatG | BigDecimal \| null — 1인분 기준 |
+| viewCount / likeCount / saveCount | Integer |
+| tags | String[] |
+| ingredients | `RecipeIngredientResponse[]` |
+| createdAt / updatedAt | LocalDateTime |
+
+**`RecipeIngredientResponse`**: `id`, `ingredientId`(매칭 안 되면 null), `ingredientNameText`, `quantityText`, `quantityValue`, `unit`, `matched`(boolean — ingredientId 유무와 동일)
+
+**`RecipeSummaryResponse`** (목록/추천용, `RecipeResponse`에서 `instructions`/`sourceUrl`/`authorNickname`/`tags`/`ingredients` 제외 + `matchedIngredientCount`/`totalIngredientCount`(Integer, null 가능) 추가
+
+---
+
 ## 아직 구현되지 않은 것
 
 - 소셜 로그인(카카오/네이버/구글/애플), 이메일 인증, 비밀번호 재설정
 - 냉장고 멤버 초대 API (`FridgeMember`를 `OWNER`가 만들 때 자동 등록만 되고, 다른 사용자를 멤버로 추가하는 API는 없음)
-- **`FridgeItem` API들의 멤버 권한 검증** — 현재 냉장고 존재 여부만 확인하고 요청자가 해당 냉장고 멤버인지는 확인하지 않음 (2번 냉장고 API는 이미 `FridgeMember` 기반 검증 적용됨)
+- **`FridgeItem`/레시피 API들의 멤버 권한 검증** — 현재 냉장고 존재 여부만 확인하고 요청자가 해당 냉장고 멤버인지는 확인하지 않음 (2번 냉장고 API는 이미 `FridgeMember` 기반 검증 적용됨)
 - 로그아웃 시 access token 즉시 무효화 (현재는 만료시간까지 유효한 stateless JWT 한계 그대로)
-- 레시피, 식단 기록 관련 API
+- **유튜브 레시피 연동**(2단계) — YouTube Data API로 요리 영상을 검색해 `recipeType=YOUTUBE`로 저장하는 기능. 별도 API 키 발급 필요
+- 식단 기록(MealLog) 관련 API
+- 레시피 좋아요/저장(`likeCount`/`saveCount` 증가), 조회수 집계

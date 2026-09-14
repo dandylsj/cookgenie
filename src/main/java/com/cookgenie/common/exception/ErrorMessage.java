@@ -18,6 +18,10 @@ public enum ErrorMessage {
     FRIDGE_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "냉장고 재료를 찾을 수 없습니다."),
     INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "식재료를 찾을 수 없습니다."),
     INGREDIENT_IN_USE(HttpStatus.CONFLICT, "냉장고에 등록되어 있는 식재료는 삭제할 수 없습니다."),
+    RECIPE_NOT_FOUND(HttpStatus.NOT_FOUND, "레시피를 찾을 수 없습니다."),
+
+    FRIDGE_HAS_NO_ITEMS(HttpStatus.BAD_REQUEST, "냉장고에 재료가 없습니다."),
+    RECIPE_GENERATION_FAILED(HttpStatus.BAD_GATEWAY, "레시피 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
 
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 존재하는 이메일입니다."),
     DUPLICATE_LOGIN_ID(HttpStatus.CONFLICT, "이미 존재하는 아이디입니다."),

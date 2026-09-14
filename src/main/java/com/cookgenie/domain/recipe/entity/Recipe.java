@@ -38,6 +38,9 @@ public class Recipe extends BaseTimeEntity {
     @Column(name = "cooking_type", length = 20)
     private String cookingType;
 
+    @Column(columnDefinition = "TEXT")
+    private String instructions;
+
     @Column(name = "source_url", length = 255)
     private String sourceUrl;
 
