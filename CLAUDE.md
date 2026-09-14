@@ -78,6 +78,12 @@ YOUTUBE_API_KEY: AIza...
 - 새 클라이언트: `domain/recipe/external/YoutubeSearchClient`(YouTube Data API 래퍼), `ClaudeRecipeClient.parseFromYoutube()`(추가된 메서드, 기존 `recipeTool()` 스키마 재사용).
 - `RecipeRepository.findBySourceUrl()` 추가.
 
+## FridgeItem 통계 API
+
+- `GET /fridges/{fridgeId}/statistics` — 총 재료 수, 소비기한 임박(3일 이내)/지남 개수, 카테고리·보관위치별 분포, 주의가 필요한 재료(임박+지남, 만료일 가까운 순 최대 5개), 오래 방치된 재료(구매일 오래된 순 최대 5개), 최근 150일 등록 활동 히트맵(`FridgeItem.createdAt` 날짜별 개수, 등록 없는 날도 0으로 포함)을 한 번에 내려줌.
+- 별도 리포지토리 쿼리 없이 `fridgeItemRepository.findByFridgeId()`로 가져온 뒤 메모리에서 집계(냉장고당 재료 수가 적어서 문제없음). `FridgeItemService.getStatistics()`에 구현, 신규 컨트롤러 `FridgeStatisticsController`.
+- 히트맵은 삭제된 재료는 반영 못 함(별도 활동 로그 테이블이 없어서 현재 남아있는 `FridgeItem.createdAt` 기준으로만 집계) — 프론트에서 참고.
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
 - `FridgeItem`/`Recipe` API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
