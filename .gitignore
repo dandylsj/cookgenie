@@ -36,5 +36,5 @@ out/
 ### VS Code ###
 .vscode/
 
-### App config (contains local DB credentials) ###
-src/main/resources/application.yml
+### 로컬 전용 비밀값 (절대 커밋 금지) ###
+src/main/resources/application-secrets.yml
