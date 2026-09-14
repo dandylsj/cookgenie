@@ -42,9 +42,13 @@ public class ClaudeNutritionClient {
                 300,
                 List.of(new ClaudeMessageRequest.Message(
                         "user",
-                        "식재료 \"" + ingredientName + "\"의 100g(액체류면 100ml) 기준 평균적인 영양성분을 "
+                        "\"" + ingredientName + "\"의 100g(액체류면 100ml) 기준 평균적인 영양성분을 "
                                 + "record_nutrition_estimate 도구를 호출해서 알려줘. "
-                                + "실제로 존재하는 식재료가 아니거나 판단할 수 없으면 isValidFood를 false로 해줘."
+                                + "이름이 양파/계란처럼 순수 원재료가 아니라 브랜드명+상품명이 붙은 가공식품이나 "
+                                + "냉동식품(예: \"하림 통살 유린기\", \"오뚜기 진라면\", \"비비고 왕교자\")이어도 괜찮아 — "
+                                + "그런 경우 정확한 제품 정보를 모르더라도 같은 종류의 음식(예: 튀긴 닭가슴살 요리, "
+                                + "라면, 만두)의 일반적인 영양성분으로 최선을 다해 추정해서 알려줘. "
+                                + "실제 음식/식품과 무관한 문자열이라 추정 자체가 불가능할 때만 isValidFood를 false로 해줘."
                 )),
                 List.of(nutritionTool()),
                 Map.of("type", "tool", "name", TOOL_NAME)

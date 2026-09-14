@@ -84,6 +84,10 @@ YOUTUBE_API_KEY: AIza...
 - 별도 리포지토리 쿼리 없이 `fridgeItemRepository.findByFridgeId()`로 가져온 뒤 메모리에서 집계(냉장고당 재료 수가 적어서 문제없음). `FridgeItemService.getStatistics()`에 구현, 신규 컨트롤러 `FridgeStatisticsController`.
 - 히트맵은 삭제된 재료는 반영 못 함(별도 활동 로그 테이블이 없어서 현재 남아있는 `FridgeItem.createdAt` 기준으로만 집계) — 프론트에서 참고.
 
+## 버그: 가공식품/브랜드 상품명은 영양정보 추정이 안 됨 (수정함)
+
+`ClaudeNutritionClient`의 프롬프트가 "식재료"(순수 원재료) 기준으로만 짜여 있어서, "하림 통살 유린기"처럼 브랜드명+상품명이 붙은 가공식품/냉동식품 이름을 넣으면 Claude가 "실제 식재료가 아니다"로 판단해 `isValidFood=false`를 반환하고, 그 결과 영양정보 없이(`dataSource=USER_INPUT`) 등록되는 문제가 있었음. 프롬프트를 "브랜드명+상품명이 붙은 가공식품이어도 같은 종류 음식의 일반적인 영양성분으로 추정해줘"로 수정해서 완화함(실제 음식과 무관한 문자열일 때만 false). **실제 Anthropic API 키로 엔드투엔드 테스트는 아직 안 해봄** — 로컬/배포 환경에서 "하림 통살 유린기" 같은 이름으로 재확인 필요.
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
 - `FridgeItem`/`Recipe` API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
