@@ -321,6 +321,33 @@ Authorization: Bearer {accessToken}
 
 ---
 
+### 3.6 냉장고 재료 현황 통계 — `GET /fridges/{fridgeId}/statistics`
+
+총 재료 수, 소비기한 임박/지남 개수, 카테고리·보관위치별 분포, 주의가 필요한 재료, 오래 방치된 재료, 최근 등록 활동 히트맵을 한 번에 조회합니다. "임박"은 오늘부터 3일 이내(오늘 포함) 만료, "지남"은 만료일이 오늘보다 이전인 경우입니다.
+
+**Response** `200 OK` — `GlobalResponse<FridgeStatisticsResponse>`
+
+**에러**: 냉장고 없음(404)
+
+**`FridgeStatisticsResponse`**
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| totalItemCount | long | 전체 재료 개수 |
+| expiringSoonCount | long | 소비기한이 3일 이내(오늘 포함)로 남은 재료 개수. 이미 지난 건 제외 |
+| expiredCount | long | 소비기한이 지난 재료 개수 |
+| categoryDistribution | `CategoryDistribution[]` | 카테고리별 개수(내림차순). 카테고리 없는 재료는 `categoryName="미분류"`로 묶임 |
+| storageLocationDistribution | `StorageLocationDistribution[]` | 보관위치별 개수(내림차순) |
+| expiryAttentionItems | `FridgeItemResponse[]` | 소비기한이 임박했거나 이미 지난 재료. 만료일이 가까운(또는 지난) 순으로 최대 5개 |
+| longNeglectedItems | `FridgeItemResponse[]` | 구매일이 가장 오래된 재료 최대 5개("방치된 재료") |
+| activityHeatmap | `DailyActivityCount[]` | 최근 150일간 날짜별 재료 등록 개수(`FridgeItem.createdAt` 기준). 등록 없는 날도 `count=0`으로 포함되어 항상 150개 |
+
+**`CategoryDistribution`**: `categoryName`, `count`
+**`StorageLocationDistribution`**: `storageLocation`(enum), `count`
+**`DailyActivityCount`**: `date`(LocalDate), `count`
+
+---
+
 ## 4. 식재료 API (`/ingredients`)
 
 **전부 인증 필요.**
