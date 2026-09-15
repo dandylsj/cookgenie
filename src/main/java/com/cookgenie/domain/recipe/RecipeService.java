@@ -53,24 +53,33 @@ public class RecipeService {
     private final ClaudeRecipeClient claudeRecipeClient;
     private final YoutubeSearchClient youtubeSearchClient;
 
-    /** 냉장고에 있는 재료로 Claude에게 레시피를 생성시켜 저장한다(dataSource=AI). */
+    /**
+     * 레시피를 생성시켜 저장한다(dataSource=AI). request.useFridgeIngredients가 true(기본값)면 냉장고에 있는
+     * 재료만으로, false면 냉장고 재료와 무관하게 note 요청 내용만으로 자유롭게 생성한다.
+     */
     @Transactional
     public RecipeResponse generateAiRecipe(Long fridgeId, AiRecipeGenerateRequest request) {
         if (!fridgeRepository.existsById(fridgeId)) {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
 
-        List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
-        if (items.isEmpty()) {
-            throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
-        }
-        List<String> ingredientNames = items.stream()
-                .map(item -> item.getIngredient().getName())
-                .distinct()
-                .toList();
+        GeneratedRecipe generated;
+        if (request.shouldUseFridgeIngredients()) {
+            List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
+            if (items.isEmpty()) {
+                throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
+            }
+            List<String> ingredientNames = items.stream()
+                    .map(item -> item.getIngredient().getName())
+                    .distinct()
+                    .toList();
 
-        GeneratedRecipe generated = claudeRecipeClient.generate(ingredientNames, request.getNote())
-                .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));
+            generated = claudeRecipeClient.generate(ingredientNames, request.getNote())
+                    .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));
+        } else {
+            generated = claudeRecipeClient.generateFree(request.getNote())
+                    .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));
+        }
 
         Recipe recipe = recipeRepository.save(
                 Recipe.builder()
