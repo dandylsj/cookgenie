@@ -49,7 +49,8 @@ public class SecurityConfig {
         configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:*",
                 "https://cookgenie.dandyhomelab.uk",
-                "https://cookgeniewebveiw.vercel.app"
+                "https://cookgeniewebveiw.vercel.app",
+                "https://cookgenie-web.vercel.app"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
