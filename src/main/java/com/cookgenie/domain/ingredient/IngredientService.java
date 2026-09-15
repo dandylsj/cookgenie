@@ -6,6 +6,7 @@ import com.cookgenie.domain.fridge.repository.FridgeItemRepository;
 import com.cookgenie.domain.ingredient.dto.CategoryResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
 import com.cookgenie.domain.ingredient.dto.IngredientResponse;
+import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import com.cookgenie.domain.ingredient.entity.Category;
 import com.cookgenie.domain.ingredient.entity.DataSource;
@@ -59,6 +60,19 @@ public class IngredientService {
     @Transactional(readOnly = true)
     public List<CategoryResponse> getCategories() {
         return categoryRepository.findAll().stream().map(CategoryResponse::new).toList();
+    }
+
+    /**
+     * 카테고리별 추천 재료 이름 목록(정적 데이터, DB/AI 호출 없음). 재료 추가 화면에서 카테고리를 고르면
+     * 바로 보여줄 수 있고, 사용자가 그중 하나를 고르면 이 이름 그대로 {@link #createIngredient}를 호출하면 된다.
+     */
+    @Transactional(readOnly = true)
+    public List<IngredientSuggestionResponse> getSuggestions(Long categoryId) {
+        Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.CATEGORY_NOT_FOUND));
+        return IngredientSuggestions.forCategory(category.getName()).stream()
+                .map(IngredientSuggestionResponse::new)
+                .toList();
     }
 
     /**
