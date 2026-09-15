@@ -53,21 +53,29 @@ public class RecipeService {
     private final ClaudeRecipeClient claudeRecipeClient;
     private final YoutubeSearchClient youtubeSearchClient;
 
-    /** 냉장고에 있는 재료로 Claude에게 레시피를 생성시켜 저장한다(dataSource=AI). */
+    /**
+     * 레시피를 Claude에게 생성시켜 저장한다(dataSource=AI).
+     * useFridgeIngredients=true(기본)면 냉장고 재료를 기준으로, false면 냉장고 재료는 무시하고 note 요청대로만 자유롭게 생성한다.
+     */
     @Transactional
     public RecipeResponse generateAiRecipe(Long fridgeId, AiRecipeGenerateRequest request) {
         if (!fridgeRepository.existsById(fridgeId)) {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
 
-        List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
-        if (items.isEmpty()) {
-            throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
+        List<String> ingredientNames = List.of();
+        if (request.isUseFridgeIngredients()) {
+            List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
+            if (items.isEmpty()) {
+                throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
+            }
+            ingredientNames = items.stream()
+                    .map(item -> item.getIngredient().getName())
+                    .distinct()
+                    .toList();
+        } else if (request.getNote() == null || request.getNote().isBlank()) {
+            throw new CustomException(ErrorMessage.RECIPE_NOTE_REQUIRED);
         }
-        List<String> ingredientNames = items.stream()
-                .map(item -> item.getIngredient().getName())
-                .distinct()
-                .toList();
 
         GeneratedRecipe generated = claudeRecipeClient.generate(ingredientNames, request.getNote())
                 .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));

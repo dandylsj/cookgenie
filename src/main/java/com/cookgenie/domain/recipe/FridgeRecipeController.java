@@ -31,8 +31,9 @@ public class FridgeRecipeController {
     /** POST /fridges/{fridgeId}/recipes/generate - 냉장고 재료로 AI 레시피 생성 */
     @Operation(
             summary = "AI 레시피 생성",
-            description = "냉장고에 있는 재료들을 Claude에게 전달해서 만들 수 있는 레시피 하나를 생성합니다. "
-                    + "생성된 레시피는 저장되어 이후 추천/조회에도 활용됩니다."
+            description = "useFridgeIngredients=true(기본값)면 냉장고에 있는 재료들을 Claude에게 전달해서 "
+                    + "만들 수 있는 레시피 하나를 생성합니다. false면 냉장고 재료는 무시하고 note에 적힌 요청대로만 "
+                    + "자유롭게 레시피를 생성합니다(이 경우 note는 필수). 생성된 레시피는 저장되어 이후 추천/조회에도 활용됩니다."
     )
     @PostMapping("/generate")
     public ResponseEntity<GlobalResponse<RecipeResponse>> generate(

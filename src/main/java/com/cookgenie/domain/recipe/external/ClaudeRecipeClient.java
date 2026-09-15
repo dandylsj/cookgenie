@@ -35,13 +35,20 @@ public class ClaudeRecipeClient {
         this.objectMapper = objectMapper;
     }
 
-    /** 보유 재료 목록(과 선택적 요청사항)으로 레시피 하나를 생성한다. 실패하면 empty. */
+    /**
+     * 레시피 하나를 생성한다. 실패하면 empty.
+     * availableIngredients가 비어있으면 냉장고 재료는 무시하고 note에 적힌 요청대로만 자유롭게 생성한다.
+     */
     public Optional<GeneratedRecipe> generate(List<String> availableIngredients, String note) {
-        String prompt = "다음 재료들을 활용해서 만들 수 있는 요리 레시피를 하나 제안해줘. "
-                + "보유 재료: " + String.join(", ", availableIngredients) + ". "
-                + "레시피에 꼭 저 재료만 써야 하는 건 아니고, 흔히 집에 있는 기본 양념(소금, 후추, 식용유, 간장 등)은 "
-                + "추가로 써도 돼. record_generated_recipe 도구를 호출해서 결과를 알려줘."
-                + (note != null && !note.isBlank() ? " 추가 요청사항: " + note : "");
+        String prompt = (availableIngredients == null || availableIngredients.isEmpty())
+                ? "다음 요청에 맞는 요리 레시피를 하나 제안해줘. 특정 재료에 얽매이지 말고 "
+                        + "그 요리를 만드는 데 일반적으로 쓰이는 재료를 자유롭게 사용해서 요청한 요리에 충실하게 만들어줘. "
+                        + "record_generated_recipe 도구를 호출해서 결과를 알려줘. 요청사항: " + note
+                : "다음 재료들을 활용해서 만들 수 있는 요리 레시피를 하나 제안해줘. "
+                        + "보유 재료: " + String.join(", ", availableIngredients) + ". "
+                        + "레시피에 꼭 저 재료만 써야 하는 건 아니고, 흔히 집에 있는 기본 양념(소금, 후추, 식용유, 간장 등)은 "
+                        + "추가로 써도 돼. record_generated_recipe 도구를 호출해서 결과를 알려줘."
+                        + (note != null && !note.isBlank() ? " 추가 요청사항: " + note : "");
 
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
