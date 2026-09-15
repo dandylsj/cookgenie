@@ -434,17 +434,21 @@ Authorization: Bearer {accessToken}
 
 ### 5.1 AI 레시피 생성 — `POST /fridges/{fridgeId}/recipes/generate`
 
-냉장고에 있는 재료 이름들을 Claude에게 전달해서 만들 수 있는 레시피 하나를 생성하고 저장합니다(`recipeType=AI`). 재료는 냉장고에 있는 것만 쓰라는 게 아니라, 소금/식용유/후추/다진마늘 같은 흔한 기본 양념은 Claude가 알아서 추가할 수 있습니다 — 그렇게 추가된 재료는 `RecipeIngredient.ingredientId`가 `null`로 텍스트만 표시됩니다.
+레시피 하나를 생성하고 저장합니다(`recipeType=AI`). `useFridgeIngredients`(기본 true)에 따라 두 가지 모드로 동작합니다:
 
-**Request Body** (`AiRecipeGenerateRequest`, 바디 자체를 생략해도 됨)
+- **`useFridgeIngredients=true`(기본값, 생략해도 이 동작)**: 냉장고에 있는 재료 이름들을 Claude에게 전달해서 그 재료로 만들 수 있는 레시피를 생성합니다. 재료는 냉장고에 있는 것만 쓰라는 게 아니라, 소금/식용유/후추/다진마늘 같은 흔한 기본 양념은 Claude가 알아서 추가할 수 있습니다 — 그렇게 추가된 재료는 `RecipeIngredient.ingredientId`가 `null`로 텍스트만 표시됩니다. **냉장고에 재료가 하나도 없으면 400 에러**가 납니다.
+- **`useFridgeIngredients=false`**: 냉장고 재료를 완전히 무시하고, `note`에 적힌 요청사항에만 맞는 레시피를 자유롭게 생성합니다(냉장고에 재료가 없어도 됨). `note`도 비워두면 Claude가 아무 요리나 추천합니다. 지금 냉장고에 없는 재료로 새로운 레시피를 시도해보고 싶을 때 씁니다.
+
+**Request Body** (`AiRecipeGenerateRequest`, 바디 자체를 생략해도 됨 — 이 경우 `useFridgeIngredients=true`로 동작)
 
 | 필드 | 타입 | 필수 |
 |---|---|---|
 | note | String | X — 예: "매콤하게", "국물 요리로" 같은 추가 요청사항 |
+| useFridgeIngredients | Boolean | X — 기본 `true`. `false`면 냉장고 재료 무시하고 note로만 자유 생성 |
 
 **Response** `200 OK` — `GlobalResponse<RecipeResponse>` (Claude 호출 때문에 응답까지 수 초 걸릴 수 있음)
 
-**에러**: 냉장고 없음(404), 냉장고에 재료 없음(400), 레시피 생성 실패(502 — Claude 호출 실패/크레딧 부족 등)
+**에러**: 냉장고 없음(404), 냉장고에 재료 없음(400 — `useFridgeIngredients=true`일 때만), 레시피 생성 실패(502 — Claude 호출 실패/크레딧 부족 등)
 
 ---
 

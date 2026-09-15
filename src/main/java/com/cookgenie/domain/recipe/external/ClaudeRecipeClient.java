@@ -65,36 +65,6 @@ public class ClaudeRecipeClient {
         }
     }
 
-    /** 보유 재료와 무관하게, 사용자 요청 내용만으로 레시피 하나를 자유롭게 생성한다. 실패하면 empty. */
-    public Optional<GeneratedRecipe> generateFree(String note) {
-        String prompt = "요청에 맞는 요리 레시피를 하나 제안해줘. 지금 어떤 재료가 있는지는 신경 쓰지 말고, "
-                + "필요한 재료는 자유롭게 정해서 알려줘. "
-                + (note != null && !note.isBlank()
-                        ? "요청: " + note
-                        : "특별한 요청은 없으니 아무 요리나 하나 추천해줘.")
-                + " record_generated_recipe 도구를 호출해서 결과를 알려줘.";
-
-        ClaudeMessageRequest request = new ClaudeMessageRequest(
-                model,
-                1200,
-                List.of(new ClaudeMessageRequest.Message("user", prompt)),
-                List.of(recipeTool()),
-                Map.of("type", "tool", "name", TOOL_NAME)
-        );
-
-        try {
-            ClaudeMessageResponse response = restClient.post()
-                    .body(request)
-                    .retrieve()
-                    .body(ClaudeMessageResponse.class);
-
-            return Optional.ofNullable(extractRecipe(response));
-        } catch (Exception e) {
-            log.warn("[Claude 레시피 자유 생성] 호출 실패 - note={}, error={}", note, e.getMessage());
-            return Optional.empty();
-        }
-    }
-
     /** 유튜브 영상 제목/설명에서 레시피 정보를 추출한다. 설명이 부실하면 제목과 일반 요리 지식으로 추정한다. */
     public Optional<GeneratedRecipe> parseFromYoutube(String videoTitle, String videoDescription) {
         String description = videoDescription == null || videoDescription.isBlank()

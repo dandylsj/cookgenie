@@ -32,9 +32,7 @@ public class FridgeRecipeController {
     @Operation(
             summary = "AI 레시피 생성",
             description = "냉장고에 있는 재료들을 Claude에게 전달해서 만들 수 있는 레시피 하나를 생성합니다. "
-                    + "생성된 레시피는 저장되어 이후 추천/조회에도 활용됩니다. "
-                    + "request.useFridgeIngredients를 false로 보내면 냉장고 재료와 무관하게 note 요청 내용만으로 "
-                    + "자유롭게 레시피를 생성합니다(기본값 true)."
+                    + "생성된 레시피는 저장되어 이후 추천/조회에도 활용됩니다."
     )
     @PostMapping("/generate")
     public ResponseEntity<GlobalResponse<RecipeResponse>> generate(
