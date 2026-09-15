@@ -70,6 +70,7 @@ YOUTUBE_API_KEY: AIza...
 - `GET /fridges/{fridgeId}/recipes/recommendations` — 냉장고 재료와 겹치는 비율이 높은 순으로 기존 레시피 추천.
 - `GET /recipes`, `GET /recipes/{id}`, `DELETE /recipes/{id}` — 기본 조회/삭제.
 - `Recipe` 엔티티에 원래 없던 `instructions`(조리법 TEXT) 컬럼을 추가함.
+- `AiRecipeGenerateRequest.useFridgeIngredients`(기본 `true`) — `false`로 보내면 냉장고 재료를 완전히 무시하고 `note`에만 맞는 레시피를 자유 생성함(`ClaudeRecipeClient.generateFreeform()`). 지금 냉장고에 없는 재료로 레시피를 시도해보고 싶다는 요청으로 추가함. `true`일 때만 냉장고에 재료가 없으면 400 에러가 남.
 
 ## Recipe 2단계 — 유튜브 레시피 연동
 

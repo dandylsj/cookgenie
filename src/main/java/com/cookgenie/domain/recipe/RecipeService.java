@@ -53,24 +53,21 @@ public class RecipeService {
     private final ClaudeRecipeClient claudeRecipeClient;
     private final YoutubeSearchClient youtubeSearchClient;
 
-    /** 냉장고에 있는 재료로 Claude에게 레시피를 생성시켜 저장한다(dataSource=AI). */
+    /**
+     * Claude에게 레시피를 생성시켜 저장한다(recipeType=AI). {@code request.isUseFridgeIngredients()}가
+     * true(기본값)면 냉장고에 있는 재료를 기준으로 생성하고(냉장고에 재료가 없으면 에러), false면 냉장고
+     * 재료를 무시하고 note에만 맞는 레시피를 자유롭게 생성한다.
+     */
     @Transactional
     public RecipeResponse generateAiRecipe(Long fridgeId, AiRecipeGenerateRequest request) {
         if (!fridgeRepository.existsById(fridgeId)) {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
 
-        List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
-        if (items.isEmpty()) {
-            throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
-        }
-        List<String> ingredientNames = items.stream()
-                .map(item -> item.getIngredient().getName())
-                .distinct()
-                .toList();
-
-        GeneratedRecipe generated = claudeRecipeClient.generate(ingredientNames, request.getNote())
-                .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));
+        GeneratedRecipe generated = request.isUseFridgeIngredients()
+                ? generateFromFridgeIngredients(fridgeId, request.getNote())
+                : claudeRecipeClient.generateFreeform(request.getNote())
+                        .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));
 
         Recipe recipe = recipeRepository.save(
                 Recipe.builder()
@@ -253,6 +250,21 @@ public class RecipeService {
                     return tag.getName();
                 })
                 .toList();
+    }
+
+    /** 냉장고 재료 이름 목록으로 Claude에게 레시피 생성을 요청한다. 냉장고에 재료가 없으면 예외. */
+    private GeneratedRecipe generateFromFridgeIngredients(Long fridgeId, String note) {
+        List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
+        if (items.isEmpty()) {
+            throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
+        }
+        List<String> ingredientNames = items.stream()
+                .map(item -> item.getIngredient().getName())
+                .distinct()
+                .toList();
+
+        return claudeRecipeClient.generate(ingredientNames, note)
+                .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_GENERATION_FAILED));
     }
 
     private RecipeResponse toResponse(Recipe recipe) {
