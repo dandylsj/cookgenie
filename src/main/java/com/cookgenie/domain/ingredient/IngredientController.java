@@ -4,6 +4,7 @@ import com.cookgenie.common.model.response.GlobalResponse;
 import com.cookgenie.domain.ingredient.dto.CategoryResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
 import com.cookgenie.domain.ingredient.dto.IngredientResponse;
+import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -44,6 +45,19 @@ public class IngredientController {
     @GetMapping("/categories")
     public ResponseEntity<GlobalResponse<List<CategoryResponse>>> getCategories() {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.getCategories()));
+    }
+
+    /** GET /ingredients/categories/{categoryId}/suggestions - 카테고리별 추천 재료 이름 목록 조회 */
+    @Operation(
+            summary = "카테고리별 추천 재료 조회",
+            description = "재료 추가 화면에서 카테고리를 고르면 보여줄, 자주 쓰는 재료 이름 목록을 반환합니다. "
+                    + "DB/AI 호출 없는 정적 목록이며, 사용자가 그중 하나를 고르면 그 이름 그대로 POST /ingredients를 "
+                    + "호출하면 됩니다(이미 등록된 이름이면 즉시 재사용, 처음이면 Claude가 영양정보를 추정)."
+    )
+    @GetMapping("/categories/{categoryId}/suggestions")
+    public ResponseEntity<GlobalResponse<List<IngredientSuggestionResponse>>> getSuggestions(
+            @Parameter(description = "카테고리 ID") @PathVariable Long categoryId) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.getSuggestions(categoryId)));
     }
 
     /** POST /ingredients - 목록에 없는 새 식재료 등록 (같은 이름이 있으면 재사용, 없으면 Claude로 영양정보 추정) */

@@ -86,6 +86,12 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 
 **서버 재시작하면 캐시가 날아가는 인메모리 캐시**라서 완전한 해결책은 아님 — 진짜 쿼터가 부족하면 Google Cloud Console에서 증설 요청 필요(에러 메시지에 링크 포함). 참고로 `RecipeService.searchYoutubeRecipes()`가 keyword에 항상 `" 레시피"`를 붙이는데, 프론트에서 이미 "레시피"가 포함된 keyword를 보내면 "OO 레시피 레시피"처럼 중복되는 것도 확인됨(캐시 키가 미묘하게 갈리는 부작용은 있지만 기능엔 문제 없어서 이번엔 손대지 않음).
 
+## 카테고리별 추천 재료 목록
+
+- `GET /ingredients/categories/{categoryId}/suggestions` — 재료 추가 화면에서 카테고리를 고르면 보여줄 자주 쓰는 재료 이름 목록(정적 데이터, DB/AI 호출 없음). `domain/ingredient/IngredientSuggestions`에 카테고리 이름 → 추천 이름 목록을 하드코딩해둠(`CategorySeeder`의 12개 기본 카테고리와 맞춰야 함).
+- **왜 정적 목록인가**: 서버 기동 시 150개 재료를 미리 Claude로 다 추정해서 시딩하는 방식도 고려했지만, 아무도 안 고르는 재료까지 토큰을 쓰게 되므로 채택 안 함. 대신 이름만 고정해서 보여주고, 실제 등록/영양정보 추정은 사용자가 고른 시점에 기존 `POST /ingredients`(같은 이름 재사용 or Claude 추정) 흐름을 그대로 타게 함 — 이러면 여러 사용자가 같은 재료를 여러 번 골라도 이름이 항상 똑같아서 두 번째부터는 재사용되고, 표기 차이(예: "돼지고기" vs "돼지 고기")로 인한 중복 등록/중복 추정도 원천 차단됨.
+- `ErrorMessage.CATEGORY_NOT_FOUND` 추가.
+
 ## FridgeItem 통계 API
 
 - `GET /fridges/{fridgeId}/statistics` — 총 재료 수, 소비기한 임박(3일 이내)/지남 개수, 카테고리·보관위치별 분포, 주의가 필요한 재료(임박+지남, 만료일 가까운 순 최대 5개), 오래 방치된 재료(구매일 오래된 순 최대 5개), 최근 150일 등록 활동 히트맵(`FridgeItem.createdAt` 날짜별 개수, 등록 없는 날도 0으로 포함)을 한 번에 내려줌.

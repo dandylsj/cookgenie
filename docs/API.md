@@ -36,6 +36,7 @@ Authorization: Bearer {accessToken}
 | 냉장고 없음 | 404 | 냉장고를 찾을 수 없습니다. |
 | 냉장고 재료 없음 | 404 | 냉장고 재료를 찾을 수 없습니다. |
 | 식재료 없음 | 404 | 식재료를 찾을 수 없습니다. |
+| 카테고리 없음 | 404 | 카테고리를 찾을 수 없습니다. |
 | 이메일 중복 | 409 | 이미 존재하는 이메일입니다. |
 | 아이디 중복 | 409 | 이미 존재하는 아이디입니다. |
 | 탈퇴한 계정으로 로그인 시도 | 409 | 탈퇴한 계정입니다. |
@@ -362,7 +363,17 @@ Authorization: Bearer {accessToken}
 
 **Response** `200 OK` — `GlobalResponse<List<CategoryResponse>>`
 
-### 4.3 식재료 등록 — `POST /ingredients`
+### 4.3 카테고리별 추천 재료 조회 — `GET /ingredients/categories/{categoryId}/suggestions`
+
+재료 추가 화면에서 카테고리를 고르면 바로 보여줄 수 있는, 자주 쓰는 재료 이름 목록입니다. **DB/AI 호출이 전혀 없는 정적 목록**이라 즉시 응답합니다. 사용자가 그중 하나를 고르면, 그 이름 그대로 4.4(등록)를 호출하면 됩니다 — 이미 같은 이름이 등록돼 있으면 즉시 재사용되고, 처음 등록되는 이름이면 그때 Claude가 영양정보를 추정합니다. 추천 목록의 이름을 항상 고정해두는 이유는, 여러 사용자가 같은 재료를 골라도 "돼지고기" vs "돼지 고기"처럼 표기가 달라 중복 등록/중복 추정되는 걸 막기 위함입니다.
+
+**Response** `200 OK` — `GlobalResponse<List<IngredientSuggestionResponse>>`
+
+**에러**: 카테고리 없음(404)
+
+**`IngredientSuggestionResponse`**: `name`
+
+### 4.4 식재료 등록 — `POST /ingredients`
 
 검색 결과에 없는 식재료를 등록합니다. **동작 방식**:
 
@@ -380,13 +391,13 @@ Authorization: Bearer {accessToken}
 
 **Response** `200 OK` — `GlobalResponse<IngredientResponse>` (LLM 호출이 걸리면 응답까지 1~2초 정도 걸릴 수 있음)
 
-### 4.4 식재료 수정 — `PUT /ingredients/{id}`
+### 4.5 식재료 수정 — `PUT /ingredients/{id}`
 
-**Request Body** (`IngredientUpdateRequest`) — 필드는 4.3과 동일
+**Request Body** (`IngredientUpdateRequest`) — 필드는 4.4와 동일
 
 **Response** `200 OK` — `GlobalResponse<IngredientResponse>` · **에러**: 식재료 없음(404)
 
-### 4.5 식재료 삭제 — `DELETE /ingredients/{id}`
+### 4.6 식재료 삭제 — `DELETE /ingredients/{id}`
 
 **Response** `204 No Content` · **에러**: 식재료 없음(404), 이미 어떤 냉장고에 등록되어 삭제 불가(409)
 
