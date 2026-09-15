@@ -32,6 +32,7 @@ public class SecurityConfig {
             "/auth/sign",
             "/auth/login",
             "/auth/reissue",
+            "/auth/guest",
             "/actuator/health",
             "/swagger-ui/**",
             "/swagger-ui.html",

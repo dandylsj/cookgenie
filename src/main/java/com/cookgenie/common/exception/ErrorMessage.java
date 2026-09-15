@@ -30,7 +30,8 @@ public enum ErrorMessage {
     DUPLICATE_LOGIN_ID(HttpStatus.CONFLICT, "이미 존재하는 아이디입니다."),
     WITHDRAWN_USER(HttpStatus.CONFLICT, "탈퇴한 계정입니다."),
 
-    SOCIAL_LOGIN_ACCOUNT(HttpStatus.UNPROCESSABLE_ENTITY, "소셜 로그인으로 가입된 계정입니다.");
+    SOCIAL_LOGIN_ACCOUNT(HttpStatus.UNPROCESSABLE_ENTITY, "소셜 로그인으로 가입된 계정입니다."),
+    NOT_GUEST_ACCOUNT(HttpStatus.BAD_REQUEST, "게스트 계정이 아닙니다.");
 
     private final HttpStatus status;
     private final String message;

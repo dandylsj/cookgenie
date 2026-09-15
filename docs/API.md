@@ -76,7 +76,31 @@ Authorization: Bearer {accessToken}
 
 ---
 
-### 1.2 로그인 — `POST /auth/login`
+### 1.2 게스트로 시작 — `POST /auth/guest`
+
+인증 불필요. Request Body 없음.
+
+회원가입 없이 바로 쓸 수 있는 임시 계정을 만들고 access/refresh 토큰을 즉시 발급합니다. 냉장고 생성/재료 등록/AI 레시피 생성 등 일반 회원과 완전히 동일하게 이용할 수 있습니다.
+
+**단, 3일 안에 [1.3 게스트 → 정식 회원 전환](#13-게스트--정식-회원-전환--post-authguestupgrade)을 하지 않으면 계정과 그 안의 모든 데이터(냉장고/재료 등)가 서버에서 자동으로 영구 삭제됩니다.** 프론트에서는 이 응답으로 받은 토큰을 저장해두고, `GET /auth/profile`의 `guestExpiresAt`을 이용해 "n일 후 데이터가 삭제됩니다" 같은 안내 배너를 노출해주세요.
+
+**Response** `200 OK` — `GlobalResponse<TokenResponse>` (형식은 회원가입과 동일)
+
+---
+
+### 1.3 게스트 → 정식 회원 전환 — `POST /auth/guest/upgrade`
+
+**인증 필요** (게스트 계정의 accessToken)
+
+Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 id를 그대로 승격시키는 방식이라 **게스트로 등록해둔 냉장고/재료 데이터가 이관 과정 없이 그대로 유지**됩니다. 성공 시 새 access/refresh 토큰을 발급하므로, 기존에 들고 있던 게스트 토큰은 폐기하고 응답으로 받은 새 토큰으로 교체해야 합니다.
+
+**Response** `200 OK` — `GlobalResponse<TokenResponse>`
+
+**에러**: 게스트 계정이 아님(400), 이메일 중복(409), 아이디 중복(409)
+
+---
+
+### 1.4 로그인 — `POST /auth/login`
 
 인증 불필요.
 
@@ -93,7 +117,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-### 1.3 토큰 재발급 — `POST /auth/reissue`
+### 1.5 토큰 재발급 — `POST /auth/reissue`
 
 인증 불필요 (refreshToken 자체가 자격증명).
 
@@ -109,7 +133,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-### 1.4 내 프로필 조회 — `GET /auth/profile`
+### 1.6 내 프로필 조회 — `GET /auth/profile`
 
 **인증 필요** (`Authorization: Bearer {accessToken}`)
 
@@ -125,15 +149,19 @@ Authorization: Bearer {accessToken}
     "nickname": "tester",
     "profileImageUrl": null,
     "createdAt": "2026-08-23T15:08:19.28262",
-    "updatedAt": "2026-08-23T15:08:19.28262"
+    "updatedAt": "2026-08-23T15:08:19.28262",
+    "guest": false,
+    "guestExpiresAt": null
   },
   "message": null
 }
 ```
 
+`guest`가 `true`이면 게스트 계정이며, `guestExpiresAt`은 이 계정과 데이터가 자동 삭제되는 시각(생성 후 3일)입니다. 정식 회원(`guest: false`)이면 `guestExpiresAt`은 항상 `null`입니다.
+
 ---
 
-### 1.5 로그아웃 — `POST /auth/logout`
+### 1.7 로그아웃 — `POST /auth/logout`
 
 **인증 필요**
 
@@ -143,7 +171,7 @@ Authorization: Bearer {accessToken}
 
 ---
 
-### 1.6 회원 탈퇴 — `DELETE /auth/withdraw`
+### 1.8 회원 탈퇴 — `DELETE /auth/withdraw`
 
 **인증 필요**
 

@@ -36,6 +36,31 @@ public class AuthController {
         return ResponseEntity.ok(GlobalResponse.success(authService.signup(request)));
     }
 
+    /** POST /auth/guest - 게스트로 시작 */
+    @Operation(
+            summary = "게스트로 시작",
+            description = "회원가입 없이 바로 쓸 수 있는 임시 계정을 만들고 access/refresh 토큰을 발급합니다. "
+                    + "냉장고/재료 등록 등 일반 회원과 동일하게 이용할 수 있지만, 3일간 정식 회원으로 전환하지 않으면 "
+                    + "계정과 데이터가 자동으로 삭제됩니다. GET /auth/profile 응답의 isGuest/guestExpiresAt으로 "
+                    + "남은 기간을 안내해주세요."
+    )
+    @PostMapping("/guest")
+    public ResponseEntity<GlobalResponse<TokenResponse>> createGuest() {
+        return ResponseEntity.ok(GlobalResponse.success(authService.createGuestAccount()));
+    }
+
+    /** POST /auth/guest/upgrade - 게스트 계정을 정식 회원으로 전환 */
+    @Operation(
+            summary = "게스트 → 정식 회원 전환",
+            description = "게스트 계정에 아이디/비밀번호/이메일/닉네임을 설정해서 정식 회원으로 전환합니다. "
+                    + "동일한 계정(유저 id)을 그대로 쓰기 때문에 게스트로 등록해둔 냉장고/재료 데이터가 이관 없이 유지됩니다."
+    )
+    @PostMapping("/guest/upgrade")
+    public ResponseEntity<GlobalResponse<TokenResponse>> upgradeGuest(
+            @RequestHeader("Authorization") String accessToken, @Valid @RequestBody SignupRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(authService.upgradeGuest(resolveToken(accessToken), request)));
+    }
+
     /** POST /auth/login - 로그인 */
     @Operation(summary = "로그인", description = "아이디와 비밀번호로 로그인하여 access/refresh 토큰을 발급받습니다.")
     @PostMapping("/login")

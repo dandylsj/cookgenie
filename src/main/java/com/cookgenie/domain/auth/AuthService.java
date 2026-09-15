@@ -14,6 +14,7 @@ import com.cookgenie.domain.auth.repository.RefreshTokenRepository;
 import com.cookgenie.domain.user.entity.User;
 import com.cookgenie.domain.user.entity.UserStatus;
 import com.cookgenie.domain.user.repository.UserRepository;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -32,15 +33,7 @@ public class AuthService {
     /** 회원가입. 이메일/아이디 중복, 소셜 계정 여부를 확인한 뒤 비밀번호를 BCrypt로 해싱해 저장하고 토큰을 발급한다. */
     @Transactional
     public TokenResponse signup(SignupRequest request) {
-        userRepository.findByEmail(request.getEmail()).ifPresent(existing -> {
-            if (existing.getProvider() != null) {
-                throw new CustomException(ErrorMessage.SOCIAL_LOGIN_ACCOUNT);
-            }
-            throw new CustomException(ErrorMessage.DUPLICATE_EMAIL);
-        });
-        userRepository.findByLoginId(request.getLoginId()).ifPresent(existing -> {
-            throw new CustomException(ErrorMessage.DUPLICATE_LOGIN_ID);
-        });
+        checkEmailAndLoginIdAvailable(request.getEmail(), request.getLoginId(), null);
 
         User user = User.builder()
                 .loginId(request.getLoginId())
@@ -52,6 +45,65 @@ public class AuthService {
         userRepository.save(user);
 
         return issueTokens(user);
+    }
+
+    /** 게스트로 시작. 회원가입 없이 바로 쓸 수 있도록 임시 계정을 만들고 토큰을 발급한다. 3일간 미전환 시 자동 삭제된다. */
+    @Transactional
+    public TokenResponse createGuestAccount() {
+        String uuid = UUID.randomUUID().toString();
+        User user = User.builder()
+                .email("guest_" + uuid + "@cookgenie.guest")
+                .loginId("guest_" + uuid.substring(0, 12))
+                .nickname("게스트")
+                .provider(User.GUEST_PROVIDER)
+                .providerId(uuid)
+                .build();
+        userRepository.save(user);
+
+        return issueTokens(user);
+    }
+
+    /** 게스트 계정을 정식 회원으로 전환한다. 같은 유저 row를 그대로 쓰므로 기존에 쌓인 냉장고/재료 데이터는 그대로 유지된다. */
+    @Transactional
+    public TokenResponse upgradeGuest(String accessToken, SignupRequest request) {
+        jwtUtil.validateToken(accessToken);
+        Long userId = jwtUtil.extractUserId(accessToken);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
+        if (!user.isGuest()) {
+            throw new CustomException(ErrorMessage.NOT_GUEST_ACCOUNT);
+        }
+
+        checkEmailAndLoginIdAvailable(request.getEmail(), request.getLoginId(), user.getId());
+
+        user.upgradeFromGuest(
+                request.getLoginId(),
+                passwordEncoder.encode(request.getPassword()),
+                request.getEmail(),
+                request.getNickname(),
+                request.getProfileImageUrl());
+
+        return issueTokens(user);
+    }
+
+    /** 이메일/아이디가 다른 사용자에게 이미 쓰이고 있는지 확인한다. selfUserId와 같은 유저가 쓰는 값이면(게스트 전환) 통과시킨다. */
+    private void checkEmailAndLoginIdAvailable(String email, String loginId, Long selfUserId) {
+        userRepository.findByEmail(email).ifPresent(existing -> {
+            if (selfUserId != null && existing.getId().equals(selfUserId)) {
+                return;
+            }
+            if (existing.getProvider() != null) {
+                throw new CustomException(ErrorMessage.SOCIAL_LOGIN_ACCOUNT);
+            }
+            throw new CustomException(ErrorMessage.DUPLICATE_EMAIL);
+        });
+        userRepository.findByLoginId(loginId).ifPresent(existing -> {
+            if (selfUserId != null && existing.getId().equals(selfUserId)) {
+                return;
+            }
+            throw new CustomException(ErrorMessage.DUPLICATE_LOGIN_ID);
+        });
     }
 
     /** 로그인. 탈퇴 여부와 비밀번호를 확인한 뒤 토큰을 발급한다. */

@@ -14,6 +14,8 @@ public class UserInfoResponse {
     private final String profileImageUrl;
     private final LocalDateTime createdAt;
     private final LocalDateTime updatedAt;
+    private final boolean isGuest;
+    private final LocalDateTime guestExpiresAt;
 
     public UserInfoResponse(User user) {
         this.id = user.getId();
@@ -23,5 +25,7 @@ public class UserInfoResponse {
         this.profileImageUrl = user.getProfileImageUrl();
         this.createdAt = user.getCreatedAt();
         this.updatedAt = user.getUpdatedAt();
+        this.isGuest = user.isGuest();
+        this.guestExpiresAt = user.isGuest() ? user.getCreatedAt().plusDays(User.GUEST_RETENTION_DAYS) : null;
     }
 }

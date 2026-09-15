@@ -48,7 +48,7 @@ YOUTUBE_API_KEY: AIza...
 
 | 도메인 | 상태 |
 |---|---|
-| Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필. JWT, Spring Security |
+| Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필 + **게스트 시작/게스트→정식회원 전환**. JWT, Spring Security |
 | Fridge | 완료 — 생성/목록/단건조회/삭제 (OWNER만 삭제 가능) |
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
@@ -106,6 +106,17 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 1. **1차 수정**: 프롬프트를 "브랜드명+상품명이 붙은 가공식품이어도 같은 종류 음식의 일반적인 영양성분으로 추정해줘"로 완화. 로컬 테스트 결과 "하림 통살 유린기"는 해결됐지만, "하림 안심 꿔바로우"(탕수육 계열 튀김요리)는 여전히 `isValidFood=false`로 거부됨 — 완화가 이름에 따라 일관되게 먹히지 않음.
 2. **2차 수정**: 프롬프트를 "먼저 음식 종류를 유추해보고, 조금이라도 짐작 가능하면 반드시 true로 하고 최선의 추정치를 내놔라"로 더 강하게 못박고, 브랜드 상품명 예시를 추가(꿔바로우 사례 포함). 또한 `nutritionTool()`의 JSON 스키마 속성 순서를 `Map.of`(순서 미보장) 대신 `LinkedHashMap`으로 고정해서, 모델이 영양성분 숫자들을 먼저 채우고 `isValidFood` 판단을 맨 마지막에 하도록 순서를 바꿈(먼저 추정해보게 유도 → 성급한 거부 감소 기대).
 3. **3차 수정 (현재) — 진짜 웹 검색 추가**: 등록은 되는데(`isValidFood=true`) 실제 값과 다르다는 피드백을 받음 — 애초에 이 클라이언트는 **웹 검색을 전혀 안 하고 Claude의 학습된 지식만으로 "추정"**하는 구조였음(그래서 특정 브랜드 제품의 정확한 포장지 영양정보와는 다를 수밖에 없었음). Anthropic Messages API의 서버사이드 `web_search` 도구(`web_search_20250305` — Haiku는 최신 동적 필터링 버전인 `web_search_20260209`을 지원 안 해서 기본형을 씀)를 `record_nutrition_estimate`와 함께 tools에 추가하고, `tool_choice`를 강제 호출(`{"type":"tool",...}`)에서 `{"type":"auto"}`로 바꿔서 Claude가 브랜드+상품명이 있는 이름은 먼저 검색해보고, 검색으로 못 찾으면 기존처럼 추정하도록 함. `max_tokens`도 검색 결과가 응답에 섞여 들어갈 걸 감안해 300→1500으로 늘림. **아직 실제 API로 검증 못 함.** 검색이 추가되면 호출당 지연시간/비용이 늘어난다는 점 참고(Anthropic 웹 검색은 사용 건당 별도 과금).
+
+## 게스트 로그인 (회원가입 없이 바로 시작)
+
+첫 사용자의 진입장벽을 낮추기 위해, 회원가입 없이 바로 냉장고/재료/레시피 기능을 다 써볼 수 있는 게스트 모드를 추가함.
+
+- `POST /auth/guest` — 인증 불필요, body 없음. `User.provider="GUEST"`(원래 소셜로그인용으로 만들어뒀던 컬럼을 재활용), 자동 생성된 고유 이메일/아이디로 진짜 유저 row를 만들고 즉시 access/refresh 토큰 발급. 이후 냉장고 생성/재료 등록/AI 레시피 생성 등 **일반 회원과 완전히 동일하게** 동작함(로컬 스토리지에 데이터를 따로 들고 있는 방식이 아니라 서버에 진짜 계정을 만드는 방식 — 영양정보 추정/AI 레시피 생성이 어차피 서버 호출이 필요해서 이렇게 설계함).
+- `POST /auth/guest/upgrade` — 인증 필요(게스트 토큰). body는 회원가입과 동일(`SignupRequest`). **같은 유저 id를 그대로 승격**시키는 방식이라 게스트로 쌓아둔 냉장고/재료 데이터가 이관 없이 그대로 유지됨. 성공 시 새 토큰을 발급하므로 프론트는 기존 게스트 토큰을 새 토큰으로 교체해야 함.
+- `User.upgradeFromGuest()`가 loginId/password/email/nickname을 채우고 provider/providerId를 null로 지워서 이후 `signup()`의 소셜/게스트 판별 로직과 충돌하지 않게 함.
+- **3일 미전환 시 자동 삭제**: `GuestCleanupScheduler`(`@Scheduled(cron="0 0 * * * *")`, 매시 정각)가 `provider="GUEST"`이고 `createdAt`이 `User.GUEST_RETENTION_DAYS`(=3일)보다 오래된 유저를 찾아서, 소유한 Fridge/FridgeItem/FridgeMember와 RefreshToken까지 함께 정리(FK 제약 때문에 `FridgeService.deleteFridge()`와 동일한 순서: FridgeItem→FridgeMember→Fridge→User)한 뒤 유저 자체를 삭제함. `CookgenieApplication`에 `@EnableScheduling` 추가함(원래 없었음, MFDS 배치 스케줄러 제거할 때 `SchedulingConfig`도 같이 지웠었음).
+- **프론트 공지용 정보**: `GET /auth/profile`(`UserInfoResponse`)에 `guest`(boolean)와 `guestExpiresAt`(게스트일 때만 값 있음 = `createdAt + 3일`) 필드를 추가함. 프론트에서 게스트 로그인 직후 또는 프로필 조회 시 이 값으로 "n일 후 데이터가 삭제됩니다 — 지금 회원가입하고 이어가기" 같은 배너를 띄우면 됨.
+- 로컬에서 게스트 생성 → 냉장고 생성 → 게스트→회원 전환 → 새 토큰으로 로그인까지 curl로 end-to-end 검증 완료.
 
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
