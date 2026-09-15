@@ -3,6 +3,8 @@ package com.cookgenie.domain.fridge;
 import com.cookgenie.common.model.response.GlobalResponse;
 import com.cookgenie.common.util.JwtUtil;
 import com.cookgenie.domain.fridge.dto.FridgeCreateRequest;
+import com.cookgenie.domain.fridge.dto.FridgeInviteCodeResponse;
+import com.cookgenie.domain.fridge.dto.FridgeJoinRequest;
 import com.cookgenie.domain.fridge.dto.FridgeResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -21,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 냉장고(Fridge) 생성/조회/삭제 API. 냉장고 안의 재료(FridgeItem) API는 {@link FridgeItemController} 참고. */
-@Tag(name = "냉장고(Fridge)", description = "냉장고 생성, 내 냉장고 목록/단건 조회, 삭제 API")
+@Tag(name = "냉장고(Fridge)", description = "냉장고 생성, 내 냉장고 목록/단건 조회, 삭제, 초대코드 발급/참여 API")
 @RestController
 @RequestMapping("/fridges")
 @RequiredArgsConstructor
@@ -63,6 +65,32 @@ public class FridgeController {
             @Parameter(description = "냉장고 ID") @PathVariable Long fridgeId) {
         fridgeService.deleteFridge(resolveUserId(accessToken), fridgeId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** POST /fridges/{fridgeId}/invite-code - 초대코드 발급 (OWNER만 가능, 재발급 시 기존 코드는 무효화) */
+    @Operation(
+            summary = "초대코드 발급",
+            description = "냉장고에 다른 사람을 초대할 4자리 숫자 코드를 발급합니다(7일간 유효). OWNER만 발급할 수 있고, "
+                    + "다시 발급하면 이전 코드는 즉시 무효화됩니다."
+    )
+    @PostMapping("/{fridgeId}/invite-code")
+    public ResponseEntity<GlobalResponse<FridgeInviteCodeResponse>> createInviteCode(
+            @RequestHeader("Authorization") String accessToken,
+            @Parameter(description = "냉장고 ID") @PathVariable Long fridgeId) {
+        return ResponseEntity.ok(GlobalResponse.success(
+                fridgeService.createInviteCode(resolveUserId(accessToken), fridgeId)));
+    }
+
+    /** POST /fridges/join - 초대코드로 냉장고 참여 */
+    @Operation(
+            summary = "초대코드로 냉장고 참여",
+            description = "다른 사람에게 받은 4자리 초대코드를 입력해서 그 냉장고에 MEMBER로 참여합니다."
+    )
+    @PostMapping("/join")
+    public ResponseEntity<GlobalResponse<FridgeResponse>> joinFridge(
+            @RequestHeader("Authorization") String accessToken, @Valid @RequestBody FridgeJoinRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(
+                fridgeService.joinFridgeByInviteCode(resolveUserId(accessToken), request.getInviteCode())));
     }
 
     /** Authorization 헤더에서 "Bearer " 접두사를 떼어내고 JWT를 검증한 뒤 userId를 추출한다. */

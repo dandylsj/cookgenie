@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,4 +36,15 @@ public class Fridge extends BaseTimeEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
+
+    @Column(name = "invite_code", length = 4)
+    private String inviteCode;
+
+    @Column(name = "invite_code_expiry_date")
+    private LocalDateTime inviteCodeExpiryDate;
+
+    public void updateInviteCode(String inviteCode, LocalDateTime expiryDate) {
+        this.inviteCode = inviteCode;
+        this.inviteCodeExpiryDate = expiryDate;
+    }
 }

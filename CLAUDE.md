@@ -49,7 +49,7 @@ YOUTUBE_API_KEY: AIza...
 | 도메인 | 상태 |
 |---|---|
 | Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필 + **게스트 시작/게스트→정식회원 전환**. JWT, Spring Security |
-| Fridge | 완료 — 생성/목록/단건조회/삭제 (OWNER만 삭제 가능) |
+| Fridge | 완료 — 생성/목록/단건조회/삭제(OWNER만) + **4자리 초대코드 발급/참여로 공유** |
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
 | Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제 |
@@ -118,10 +118,18 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 - **프론트 공지용 정보**: `GET /auth/profile`(`UserInfoResponse`)에 `guest`(boolean)와 `guestExpiresAt`(게스트일 때만 값 있음 = `createdAt + 3일`) 필드를 추가함. 프론트에서 게스트 로그인 직후 또는 프로필 조회 시 이 값으로 "n일 후 데이터가 삭제됩니다 — 지금 회원가입하고 이어가기" 같은 배너를 띄우면 됨.
 - 로컬에서 게스트 생성 → 냉장고 생성 → 게스트→회원 전환 → 새 토큰으로 로그인까지 curl로 end-to-end 검증 완료.
 
+## 냉장고 공유 (초대코드)
+
+hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을 그대로 참고해서 만듦.
+
+- `POST /fridges/{fridgeId}/invite-code` (OWNER만) — 4자리 숫자 코드를 생성해 `Fridge.inviteCode`/`inviteCodeExpiryDate`(7일 후)에 저장. hatoo처럼 냉장고당 코드를 하나만 유지하고 재발급하면 이전 코드는 그냥 덮어써져서 무효화됨.
+- `POST /fridges/join` (`{"inviteCode":"1234"}`) — hatoo는 `{groupId}/{token}` 경로로 그룹 id를 미리 알아야 참여 가능했지만, cookgenie는 **코드만 입력하면 되도록** 단순화함(`FridgeRepository.findByInviteCodeAndInviteCodeExpiryDateAfter()`로 코드만으로 활성 냉장고를 바로 찾음). 이미 멤버면 409, 코드가 없거나 만료됐으면 400.
+- 코드 생성 시 `FridgeRepository.existsByInviteCodeAndInviteCodeExpiryDateAfter()`로 현재 유효한 다른 코드와 안 겹치는 값이 나올 때까지 재시도(`generateUniqueInviteCode()`).
+- hatoo는 그룹 인원 최대 5명 제한 + Redis(Redisson) 분산 락으로 동시 참여 레이스를 막았지만, cookgenie는 Redis 인프라가 없고 인원 제한 요구사항도 없어서 **그대로 가져오지 않음** — `fridge_members(fridge_id, user_id)` unique 제약으로 중복 참여만 막음. 동시성이 실제로 문제가 되면 그때 Redis 도입을 검토.
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
 - `FridgeItem`/`Recipe` API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
-- 냉장고 멤버 초대 API
 - 프론트엔드의 "영양정보 동기화" 버튼 — 이제 없는 엔드포인트(`/ingredients/sync-raw-materials`)를 호출하고 있어서 프론트에서 제거 필요
 - 기존에 영양정보 없이 등록된 재료들(예: 계란/목살/양파/소금 등)을 일괄로 재추정하는 백필(backfill) 기능 (요청은 있었으나 미구현)
 - 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 / 로그아웃 시 JWT 즉시 무효화

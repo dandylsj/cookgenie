@@ -233,6 +233,40 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 ---
 
+### 2.5 초대코드 발급 — `POST /fridges/{fridgeId}/invite-code`
+
+**OWNER만 가능합니다.** 4자리 숫자 코드를 생성해서 **7일간** 유효하게 발급합니다. 다시 발급하면 이전 코드는 즉시 무효화되고(냉장고당 코드는 항상 하나만 활성 상태) 새 코드로 대체됩니다.
+
+**Response** `200 OK` — `GlobalResponse<FridgeInviteCodeResponse>`
+
+```json
+{
+  "success": true,
+  "data": { "inviteCode": "4661", "expiryDate": "2026-09-23T00:44:58.984827" },
+  "message": null
+}
+```
+
+**에러**: 접근 권한 없음(403) — 멤버가 아니거나, 멤버여도 `OWNER`가 아닌 경우
+
+---
+
+### 2.6 초대코드로 냉장고 참여 — `POST /fridges/join`
+
+다른 사람에게 전달받은 4자리 초대코드를 입력해서 그 냉장고에 `MEMBER`로 참여합니다. 어떤 냉장고인지 미리 알 필요 없이 코드만으로 참여됩니다.
+
+**Request Body** (`FridgeJoinRequest`)
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| inviteCode | String | O | 4자리 숫자 문자열 (예: `"4661"`) |
+
+**Response** `200 OK` — `GlobalResponse<FridgeResponse>` (`myRole: "MEMBER"`)
+
+**에러**: 유효하지 않거나 만료된 코드(400), 이미 참여 중인 냉장고(409)
+
+---
+
 ### 공통 DTO — `FridgeResponse`
 
 | 필드 | 타입 |
