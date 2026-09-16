@@ -2,9 +2,11 @@ package com.cookgenie.domain.shopping.external;
 
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -14,6 +16,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -33,6 +36,7 @@ public class CoupangProductClient {
     private final String accessKey;
     private final String secretKey;
     private final RestClient restClient;
+    private final RestClient noRedirectClient;
 
     public CoupangProductClient(
             @Value("${coupang.access-key}") String accessKey,
@@ -40,6 +44,14 @@ public class CoupangProductClient {
         this.accessKey = accessKey;
         this.secretKey = secretKey;
         this.restClient = RestClient.builder().baseUrl(DOMAIN).build();
+        // 상품 이미지 URL(리다이렉트 추적 링크)의 실제 CDN 주소를 알아내기 위해 리다이렉트를 따라가지 않는 클라이언트가 별도로 필요함.
+        this.noRedirectClient = RestClient.builder()
+                .requestFactory(new JdkClientHttpRequestFactory(
+                        HttpClient.newBuilder()
+                                .followRedirects(HttpClient.Redirect.NEVER)
+                                .connectTimeout(Duration.ofSeconds(3))
+                                .build()))
+                .build();
     }
 
     /** keyword로 상품을 검색해 최대 limit개를 반환한다. 호출 실패(키 미설정/네트워크 오류 등) 시 빈 리스트. */
@@ -57,12 +69,40 @@ public class CoupangProductClient {
                     .retrieve()
                     .body(CoupangSearchResponse.class);
 
-            return response == null || response.data() == null || response.data().productData() == null
-                    ? List.of()
-                    : response.data().productData();
+            List<CoupangSearchResponse.ProductData> products =
+                    response == null || response.data() == null || response.data().productData() == null
+                            ? List.of()
+                            : response.data().productData();
+
+            // productImage는 실제 이미지가 아니라 ads-partners.coupang.com의 추적용 리다이렉트 링크라서,
+            // 광고/트래커 차단 확장 프로그램이 도메인만 보고 요청 자체를 막아버려 썸네일이 하나도 안 뜨는 문제가 있었음.
+            // 여기서 미리 리다이렉트를 한 번 따라가 실제 CDN(image*.coupangcdn.com) 주소로 바꿔서 내려준다.
+            return products.parallelStream()
+                    .map(p -> new CoupangSearchResponse.ProductData(
+                            p.productId(), p.productName(), resolveImageUrl(p.productImage()), p.productPrice(),
+                            p.productUrl(), p.isRocket(), p.isFreeShipping(), p.categoryName()))
+                    .toList();
         } catch (Exception e) {
             log.warn("[쿠팡 상품 검색] 호출 실패 - keyword={}, error={}", keyword, e.getMessage());
             return List.of();
+        }
+    }
+
+    /** 추적용 리다이렉트 링크(ads-partners.coupang.com)의 Location 헤더를 따라가 실제 이미지 CDN 주소를 알아낸다. 실패하면 원래 링크 그대로 반환. */
+    private String resolveImageUrl(String trackedUrl) {
+        if (trackedUrl == null || trackedUrl.isBlank()) {
+            return trackedUrl;
+        }
+        try {
+            return noRedirectClient.head()
+                    .uri(trackedUrl)
+                    .exchange((request, response) -> {
+                        URI location = response.getHeaders().getLocation();
+                        return location != null ? location.toString() : trackedUrl;
+                    });
+        } catch (Exception e) {
+            log.warn("[쿠팡 이미지 URL 변환] 실패 - url={}, error={}", trackedUrl, e.getMessage());
+            return trackedUrl;
         }
     }
 
