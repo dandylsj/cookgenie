@@ -68,18 +68,7 @@ public class ClaudeRecipeClient {
                 Map.of("type", "tool", "name", TOOL_NAME)
         );
 
-        try {
-            ClaudeMessageResponse response = restClient.post()
-                    .body(request)
-                    .retrieve()
-                    .body(ClaudeMessageResponse.class);
-
-            GeneratedRecipe recipe = extractRecipe(response);
-            return Optional.ofNullable(recipe);
-        } catch (Exception e) {
-            log.warn("[Claude 레시피 생성] 호출 실패 - ingredients={}, error={}", availableIngredients, e.getMessage());
-            return Optional.empty();
-        }
+        return callAndExtract(request, "[Claude 레시피 생성] ingredients=" + availableIngredients);
     }
 
     /** 유튜브 영상 제목/설명에서 레시피 정보를 추출한다. 설명이 부실하면 제목과 일반 요리 지식으로 추정한다. */
@@ -101,17 +90,35 @@ public class ClaudeRecipeClient {
                 Map.of("type", "tool", "name", TOOL_NAME)
         );
 
-        try {
-            ClaudeMessageResponse response = restClient.post()
-                    .body(request)
-                    .retrieve()
-                    .body(ClaudeMessageResponse.class);
+        return callAndExtract(request, "[Claude 유튜브 레시피 파싱] title=" + videoTitle);
+    }
 
-            return Optional.ofNullable(extractRecipe(response));
-        } catch (Exception e) {
-            log.warn("[Claude 유튜브 레시피 파싱] 호출 실패 - title={}, error={}", videoTitle, e.getMessage());
-            return Optional.empty();
+    /**
+     * 요청을 보내 레시피를 추출한다. instructions가 비어서 오면(모델이 스키마상 "배열"만 만족시키고
+     * 실제 단계는 안 채우는 경우가 있어서) 같은 요청으로 한 번 더 시도하고, 그래도 비어있으면 실패 처리한다
+     * (instructions 없는 레시피를 그대로 저장하는 것보다 생성 실패로 처리하는 게 나음).
+     */
+    private Optional<GeneratedRecipe> callAndExtract(ClaudeMessageRequest request, String logContext) {
+        GeneratedRecipe recipe = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                ClaudeMessageResponse response = restClient.post()
+                        .body(request)
+                        .retrieve()
+                        .body(ClaudeMessageResponse.class);
+                recipe = extractRecipe(response);
+            } catch (Exception e) {
+                log.warn("{} 호출 실패(시도 {}) - error={}", logContext, attempt, e.getMessage());
+                recipe = null;
+            }
+
+            if (recipe != null && recipe.instructions() != null && !recipe.instructions().isEmpty()) {
+                return Optional.of(recipe);
+            }
+            log.warn("{} instructions가 비어서 옴(시도 {})", logContext, attempt);
         }
+        // 재시도까지 했는데도 instructions가 비어있으면 조리 순서 없는 레시피를 그대로 저장하는 대신 실패 처리한다.
+        return Optional.empty();
     }
 
     private GeneratedRecipe extractRecipe(ClaudeMessageResponse response) {
@@ -149,9 +156,9 @@ public class ClaudeRecipeClient {
         properties.put("carbohydrateG", Map.of("type", "number", "description", "1인분 기준 탄수화물(g)"));
         properties.put("proteinG", Map.of("type", "number", "description", "1인분 기준 단백질(g)"));
         properties.put("fatG", Map.of("type", "number", "description", "1인분 기준 지방(g)"));
-        properties.put("instructions", Map.of("type", "array", "items", Map.of("type", "string"),
-                "description", "조리 순서를 단계별 문장으로. 각 단계는 시간/불 세기/확인 방법을 포함해서 "
-                        + "구체적으로 작성 (예: \"중불에서 뒤집어 4분간 노릇하게 굽는다\")"));
+        properties.put("instructions", Map.of("type", "array", "minItems", 3, "items", Map.of("type", "string"),
+                "description", "조리 순서를 단계별 문장으로. 최소 3단계 이상, 절대 비워두면 안 됨. 각 단계는 "
+                        + "시간/불 세기/확인 방법을 포함해서 구체적으로 작성 (예: \"중불에서 뒤집어 4분간 노릇하게 굽는다\")"));
         properties.put("ingredients", Map.of("type", "array", "description", "필요한 재료 목록", "items", ingredientItemSchema));
         properties.put("tags", Map.of("type", "array", "items", Map.of("type", "string"),
                 "description", "다이어트/고단백/저탄수/혼밥 등 태그 0~4개"));

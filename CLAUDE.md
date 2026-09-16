@@ -89,7 +89,11 @@ COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 
 조리법을 더 자세히 쓰라고 프롬프트를 강화한 직후, 재료가 많거나(예: 재료 10개) 조리 순서가 긴 레시피에서 `조리 순서` 섹션이 완전히 빈 채로 저장되는 사례가 발생. 원인은 `ClaudeNutritionClient`에서 이미 한 번 겪었던 것과 같은 종류의 버그: `recipeTool()`의 JSON 스키마 `properties`를 `Map.of()`로 만들어서 필드 순서가 보장되지 않았고, 스키마상 `instructions`가 (사실상) 맨 마지막에 채워질 수 있는 위치였음. 응답이 길어지면서 `max_tokens`(1600)에 걸려 응답이 중간에 끊기면, 이미 채워진 title/영양정보/ingredients/tags는 저장되지만 아직 안 채워진 `instructions`는 그냥 누락되어(`generated.instructions()==null`) `Recipe.instructions`가 null로 저장되고, 프론트에는 "조리 순서" 헤더만 있고 내용이 하나도 없는 빈 상태로 보임.
 
-`recipeTool()`의 `properties`를 `Map.of()` → `LinkedHashMap`으로 바꾸고, `instructions`를 `ingredients`/`tags`보다 앞(영양정보 필드들 바로 다음)으로 옮겨서 응답이 잘리더라도 `instructions`가 먼저 채워지도록 순서를 고정함. `max_tokens`도 1600→2200으로 한 번 더 올려서 잘릴 가능성 자체를 낮춤. **재발 방지 참고**: Claude tool-use 스키마에서 `Map.of()`를 쓰면 안 됨 — 필드 순서가 응답 생성 순서에 영향을 주므로 항상 `LinkedHashMap`으로 순서를 명시할 것 (이미 `ClaudeNutritionClient`에도 같은 이유로 적용돼 있었는데 `ClaudeRecipeClient`엔 놓치고 있었음).
+`recipeTool()`의 `properties`를 `Map.of()` → `LinkedHashMap`으로 바꾸고, `instructions`를 `ingredients`/`tags`보다 앞(영양정보 필드들 바로 다음)으로 옮겨서 응답이 잘리더라도 `instructions`가 먼저 채워지도록 순서를 고정함. `max_tokens`도 1600→2200으로 한 번 더 올림.
+
+**→ 이 수정 배포 후에도 재발 (추가 수정함)**: 배포 후 실제로 확인해보니 새로 생성한 레시피마다 재료/영양정보는 정상인데 `조리 순서`만 매번 비어있었음. 재료(ingredients, instructions보다 스키마상 뒤에 위치)는 항상 정상적으로 채워졌다는 점에서 **응답이 잘리는 게 아니라, 모델이 빈 배열로 스키마 요건 자체는 만족시켜버리는 것**이 진짜 원인이었음 — `instructions`를 배열 타입으로만 선언하고 최소 개수 제약을 걸지 않아서, 모델이 빈 배열(`[]`)을 내놔도 required 검증은 통과해버림. 두 가지로 수정:
+1. `instructions` 스키마에 `"minItems": 3`을 추가해서 빈 배열이 스키마 자체를 위반하도록 강제함.
+2. `ClaudeRecipeClient`에 `callAndExtract()` 공통 헬퍼를 추가 — 응답의 `instructions`가 null/빈 배열이면 같은 요청으로 한 번 더 재시도하고, 재시도까지 실패하면 `Optional.empty()`를 반환해서 (예전처럼 조리 순서 없는 레시피를 그대로 저장하는 대신) `RecipeService`의 기존 실패 처리 경로(`RECIPE_GENERATION_FAILED` 예외)를 타게 함. `generate()`/`parseFromYoutube()` 둘 다 이 헬퍼를 씀.
 
 ## Recipe 2단계 — 유튜브 레시피 연동
 
