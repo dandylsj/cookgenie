@@ -20,13 +20,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 공공데이터포털 표준데이터(CSV)를 대표식품코드 기준으로 묶어서 재료 마스터에 시딩한다
- * (dataSource=OFFICIAL_DB, isVerified=true). 이미 등록된 이름(수동 입력이든 AI 추정이든)은 덮어쓰지
- * 않고 건너뛴다 — "아직 아무 영양정보도 없는" 재료를 정부 공식 데이터로 미리 채워두는 용도이기 때문.
+ * (dataSource=OFFICIAL_DB, isVerified=true). 같은 이름의 재료가 이미 있으면:
+ * <ul>
+ *   <li>사용자가 직접 입력해서 검증한 값(USER_INPUT + isVerified=true)이면 건드리지 않고 건너뛴다.</li>
+ *   <li>이미 공식 데이터(OFFICIAL_DB)면 다시 쓸 필요 없으니 건너뛴다.</li>
+ *   <li>그 외(AI 추정이었거나, 아직 영양정보가 아예 없는 경우)는 공식 데이터로 업그레이드한다 -
+ *       사용자가 재료를 먼저 등록해뒀다가 나중에 이 동기화를 돌려도 AI 추정 상태로 영영 남지 않도록.</li>
+ * </ul>
  *
  * <p>원재료성식품({@link RawFoodCsvLoader})과 가공식품({@link ProcessedFoodCsvLoader})은 완전히
  * 별도로 동기화한다 - 두 표준데이터는 대표식품코드의 번호 체계가 데이터구분(R/P)마다 다른 뜻으로
  * 재사용되기 때문에 하나의 맵에 섞어서 그룹핑하면 서로 다른 음식이 같은 코드로 충돌할 수 있다.
- * 대신 최종적으로는 둘 다 "이미 등록된 이름이면 건너뛴다"는 같은 규칙을 타므로, 두 데이터셋에 우연히
+ * 대신 최종적으로는 둘 다 위와 같은 이름 기준 업그레이드/보호 규칙을 타므로, 두 데이터셋에 우연히
  * 같은 이름이 있어도(예: 원재료 "우유" vs 가공식품 "우유") 먼저 동기화한 쪽이 그대로 유지된다.
  */
 @Slf4j
@@ -116,18 +121,35 @@ public class OfficialNutritionSyncService {
         }
 
         int created = 0;
+        int upgraded = 0;
         int skipped = 0;
         for (RawFoodCsvRow row : representativeByCode.values()) {
             String name = row.representativeName().trim();
-            if (name.isEmpty() || !ingredientRepository.findAllByName(name).isEmpty()) {
+            if (name.isEmpty()) {
                 skipped++;
                 continue;
             }
-            saveIngredient(name, row, categoryMap, ingredientType);
-            created++;
+
+            List<Ingredient> matches = ingredientRepository.findAllByName(name);
+            if (matches.isEmpty()) {
+                saveIngredient(name, row, categoryMap, ingredientType);
+                created++;
+                continue;
+            }
+
+            Ingredient existing = matches.get(0);
+            boolean userVerified = existing.getDataSource() == DataSource.USER_INPUT && Boolean.TRUE.equals(existing.getIsVerified());
+            boolean alreadyOfficial = existing.getDataSource() == DataSource.OFFICIAL_DB;
+            if (userVerified || alreadyOfficial) {
+                skipped++;
+                continue;
+            }
+
+            upgradeIngredient(existing, row, categoryMap, ingredientType);
+            upgraded++;
         }
 
-        SyncResult result = new SyncResult(rows.size(), representativeByCode.size(), created, skipped);
+        SyncResult result = new SyncResult(rows.size(), representativeByCode.size(), created, upgraded, skipped);
         log.info("[{}] {}", logLabel, result);
         return result;
     }
@@ -154,22 +176,43 @@ public class OfficialNutritionSyncService {
                         .build()
         );
 
-        nutritionInfoRepository.save(
-                NutritionInfo.builder()
-                        .ingredient(ingredient)
-                        .referenceAmount(row.referenceAmount() != null ? row.referenceAmount() : 100)
-                        .referenceUnit(unit)
-                        .calories(row.calories())
-                        .carbohydrateG(row.carbohydrateG())
-                        .proteinG(row.proteinG())
-                        .fatG(row.fatG())
-                        .sugarG(row.sugarG())
-                        .sodiumMg(row.sodiumMg())
-                        .fiberG(row.fiberG())
-                        .build()
-        );
+        saveNutritionInfo(ingredient, row, unit);
     }
 
-    public record SyncResult(int totalRows, int normalizedGroups, int created, int skipped) {
+    /** AI 추정이었거나 영양정보가 없던 기존 재료를 공식 데이터로 승격시킨다(이름/등록된 냉장고 재료는 그대로 유지). */
+    private void upgradeIngredient(Ingredient existing, RawFoodCsvRow row, Map<String, String> categoryMap, IngredientType ingredientType) {
+        String categoryName = categoryMap.getOrDefault(row.categoryName(), row.categoryName());
+        Category category = ingredientService.findOrCreateCategory(categoryName);
+        String unit = row.referenceUnit() != null ? row.referenceUnit() : "g";
+
+        existing.markOfficial(category, unit, ingredientType);
+        saveNutritionInfo(existing, row, unit);
+    }
+
+    private void saveNutritionInfo(Ingredient ingredient, RawFoodCsvRow row, String unit) {
+        NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(ingredient.getId()).orElse(null);
+        Integer referenceAmount = row.referenceAmount() != null ? row.referenceAmount() : 100;
+        if (nutritionInfo == null) {
+            nutritionInfoRepository.save(
+                    NutritionInfo.builder()
+                            .ingredient(ingredient)
+                            .referenceAmount(referenceAmount)
+                            .referenceUnit(unit)
+                            .calories(row.calories())
+                            .carbohydrateG(row.carbohydrateG())
+                            .proteinG(row.proteinG())
+                            .fatG(row.fatG())
+                            .sugarG(row.sugarG())
+                            .sodiumMg(row.sodiumMg())
+                            .fiberG(row.fiberG())
+                            .build()
+            );
+        } else {
+            nutritionInfo.update(referenceAmount, unit, row.calories(), row.carbohydrateG(), row.proteinG(),
+                    row.fatG(), row.sugarG(), row.sodiumMg(), row.fiberG());
+        }
+    }
+
+    public record SyncResult(int totalRows, int normalizedGroups, int created, int upgraded, int skipped) {
     }
 }

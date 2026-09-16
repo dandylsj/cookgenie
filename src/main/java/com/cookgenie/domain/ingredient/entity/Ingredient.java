@@ -72,4 +72,17 @@ public class Ingredient extends BaseTimeEntity {
         this.dataSource = DataSource.LLM_ESTIMATED;
         this.isVerified = false;
     }
+
+    /**
+     * 공공데이터 동기화로 이 재료를 정부 공식 데이터로 승격시킬 때 호출한다. AI 추정이었거나 아직
+     * 검증되지 않은 재료를 공식 데이터로 업그레이드하는 용도 - 사용자가 직접 입력해서 검증한 값은
+     * 이 메서드를 호출하기 전에 먼저 걸러내야 한다(덮어쓰면 안 됨).
+     */
+    public void markOfficial(Category category, String defaultUnit, IngredientType ingredientType) {
+        this.category = category;
+        this.defaultUnit = defaultUnit;
+        this.ingredientType = ingredientType;
+        this.dataSource = DataSource.OFFICIAL_DB;
+        this.isVerified = true;
+    }
 }
