@@ -5,6 +5,7 @@ import com.cookgenie.domain.fridge.entity.Fridge;
 import com.cookgenie.domain.fridge.repository.FridgeItemRepository;
 import com.cookgenie.domain.fridge.repository.FridgeMemberRepository;
 import com.cookgenie.domain.fridge.repository.FridgeRepository;
+import com.cookgenie.domain.shopping.repository.ShoppingItemRepository;
 import com.cookgenie.domain.user.entity.User;
 import com.cookgenie.domain.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -25,6 +26,7 @@ public class GuestCleanupScheduler {
     private final FridgeRepository fridgeRepository;
     private final FridgeItemRepository fridgeItemRepository;
     private final FridgeMemberRepository fridgeMemberRepository;
+    private final ShoppingItemRepository shoppingItemRepository;
     private final RefreshTokenRepository refreshTokenRepository;
 
     /** 매시 정각에 실행. */
@@ -40,6 +42,7 @@ public class GuestCleanupScheduler {
         for (User guest : expiredGuests) {
             for (Fridge fridge : fridgeRepository.findByOwnerId(guest.getId())) {
                 fridgeItemRepository.deleteByFridgeId(fridge.getId());
+                shoppingItemRepository.deleteByFridgeId(fridge.getId());
                 fridgeMemberRepository.deleteByFridgeId(fridge.getId());
                 fridgeRepository.delete(fridge);
             }

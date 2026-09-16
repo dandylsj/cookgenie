@@ -24,15 +24,19 @@ DB_PASSWORD: 여기에_로컬_MySQL_비밀번호
 JWT_SECRET_KEY: 아무_base64_문자열
 ANTHROPIC_API_KEY: sk-ant-...
 YOUTUBE_API_KEY: AIza...
+COUPANG_ACCESS_KEY: 쿠팡파트너스에서 발급받은 액세스 키
+COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 ```
 
-이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
 
 `YOUTUBE_API_KEY`는 Google Cloud Console에서 **YouTube Data API v3**를 활성화하고 발급받은 API 키입니다(무료지만 일일 할당량 있음). 유튜브 레시피 검색/가져오기 기능에 쓰입니다.
 
+`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`는 **쿠팡파트너스** 가입 후 발급받는 키입니다(HMAC 서명 인증). 값이 없거나 틀려도 앱은 정상 기동하고, `GET /coupang/search` 호출만 실패해서 빈 리스트를 반환합니다(크래시 안 남) — 로컬에서 이 기능을 안 쓸 거면 아무 문자열이나 넣어둬도 됨.
+
 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USERNAME`은 로컬 기본값(`localhost`/`3306`/`cookgenie`/`root`)이 있어서 별도 설정 없이 그대로 씁니다. 로컬 MySQL은 `sql/create_database.sql`로 `cookgenie` DB만 만들면 테이블은 앱 기동 시 자동 생성됩니다.
 
-**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`YOUTUBE_API_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요.**
+**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** (없어도 크래시는 안 나고 쿠팡 검색만 안 됨).
 
 ### 지나간 사고: application.yml이 통째로 배포에서 빠져있었던 문제
 
@@ -52,7 +56,8 @@ YOUTUBE_API_KEY: AIza...
 | Fridge | 완료 — 생성/목록/단건조회/삭제(OWNER만) + **4자리 초대코드 발급/참여로 공유** |
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
-| Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제 |
+| Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제. **각 재료의 냉장고 보유 여부(inFridge)도 계산** |
+| Shopping(장보기) | 완료 — 냉장고별 장보기 리스트 추가/조회/체크/삭제, **쿠팡파트너스 연동 최저가 검색** |
 | MealLog / NutritionGoal | 엔티티만 있고 API 없음 |
 | 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 | 미구현 |
 
@@ -114,7 +119,7 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 - `POST /auth/guest` — 인증 불필요, body 없음. `User.provider="GUEST"`(원래 소셜로그인용으로 만들어뒀던 컬럼을 재활용), 자동 생성된 고유 이메일/아이디로 진짜 유저 row를 만들고 즉시 access/refresh 토큰 발급. 이후 냉장고 생성/재료 등록/AI 레시피 생성 등 **일반 회원과 완전히 동일하게** 동작함(로컬 스토리지에 데이터를 따로 들고 있는 방식이 아니라 서버에 진짜 계정을 만드는 방식 — 영양정보 추정/AI 레시피 생성이 어차피 서버 호출이 필요해서 이렇게 설계함).
 - `POST /auth/guest/upgrade` — 인증 필요(게스트 토큰). body는 회원가입과 동일(`SignupRequest`). **같은 유저 id를 그대로 승격**시키는 방식이라 게스트로 쌓아둔 냉장고/재료 데이터가 이관 없이 그대로 유지됨. 성공 시 새 토큰을 발급하므로 프론트는 기존 게스트 토큰을 새 토큰으로 교체해야 함.
 - `User.upgradeFromGuest()`가 loginId/password/email/nickname을 채우고 provider/providerId를 null로 지워서 이후 `signup()`의 소셜/게스트 판별 로직과 충돌하지 않게 함.
-- **3일 미전환 시 자동 삭제**: `GuestCleanupScheduler`(`@Scheduled(cron="0 0 * * * *")`, 매시 정각)가 `provider="GUEST"`이고 `createdAt`이 `User.GUEST_RETENTION_DAYS`(=3일)보다 오래된 유저를 찾아서, 소유한 Fridge/FridgeItem/FridgeMember와 RefreshToken까지 함께 정리(FK 제약 때문에 `FridgeService.deleteFridge()`와 동일한 순서: FridgeItem→FridgeMember→Fridge→User)한 뒤 유저 자체를 삭제함. `CookgenieApplication`에 `@EnableScheduling` 추가함(원래 없었음, MFDS 배치 스케줄러 제거할 때 `SchedulingConfig`도 같이 지웠었음).
+- **3일 미전환 시 자동 삭제**: `GuestCleanupScheduler`(`@Scheduled(cron="0 0 * * * *")`, 매시 정각)가 `provider="GUEST"`이고 `createdAt`이 `User.GUEST_RETENTION_DAYS`(=3일)보다 오래된 유저를 찾아서, 소유한 Fridge/FridgeItem/ShoppingItem/FridgeMember와 RefreshToken까지 함께 정리(FK 제약 때문에 `FridgeService.deleteFridge()`와 동일한 순서: FridgeItem→ShoppingItem→FridgeMember→Fridge→User)한 뒤 유저 자체를 삭제함. `CookgenieApplication`에 `@EnableScheduling` 추가함(원래 없었음, MFDS 배치 스케줄러 제거할 때 `SchedulingConfig`도 같이 지웠었음).
 - **프론트 공지용 정보**: `GET /auth/profile`(`UserInfoResponse`)에 `guest`(boolean)와 `guestExpiresAt`(게스트일 때만 값 있음 = `createdAt + 3일`) 필드를 추가함. 프론트에서 게스트 로그인 직후 또는 프로필 조회 시 이 값으로 "n일 후 데이터가 삭제됩니다 — 지금 회원가입하고 이어가기" 같은 배너를 띄우면 됨.
 - 로컬에서 게스트 생성 → 냉장고 생성 → 게스트→회원 전환 → 새 토큰으로 로그인까지 curl로 end-to-end 검증 완료.
 
@@ -126,6 +131,16 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - `POST /fridges/join` (`{"inviteCode":"1234"}`) — hatoo는 `{groupId}/{token}` 경로로 그룹 id를 미리 알아야 참여 가능했지만, cookgenie는 **코드만 입력하면 되도록** 단순화함(`FridgeRepository.findByInviteCodeAndInviteCodeExpiryDateAfter()`로 코드만으로 활성 냉장고를 바로 찾음). 이미 멤버면 409, 코드가 없거나 만료됐으면 400.
 - 코드 생성 시 `FridgeRepository.existsByInviteCodeAndInviteCodeExpiryDateAfter()`로 현재 유효한 다른 코드와 안 겹치는 값이 나올 때까지 재시도(`generateUniqueInviteCode()`).
 - hatoo는 그룹 인원 최대 5명 제한 + Redis(Redisson) 분산 락으로 동시 참여 레이스를 막았지만, cookgenie는 Redis 인프라가 없고 인원 제한 요구사항도 없어서 **그대로 가져오지 않음** — `fridge_members(fridge_id, user_id)` unique 제약으로 중복 참여만 막음. 동시성이 실제로 문제가 되면 그때 Redis 도입을 검토.
+
+## 장보기 리스트 + 쿠팡 최저가 검색 + AI 레시피 부족 재료 연동
+
+`domain/shopping/` 신규 패키지. 세 가지가 맞물려 동작함:
+
+1. **장보기 리스트 (`ShoppingItem`, 냉장고별)**: `POST/GET /fridges/{fridgeId}/shopping-items`, `PATCH .../{itemId}`(완료 체크), `DELETE .../{itemId}`. `Ingredient` 마스터와 무관하게 이름(`name`)만 저장하는 단순 리스트 — 여기는 영양정보 추정이 필요 없어서 `POST /ingredients`의 Claude 추정 흐름을 안 탐. `FridgeItemController`처럼 별도 멤버십 검증 없이 냉장고 존재 여부만 확인(기존 코드베이스의 느슨한 권한 검증 관례를 그대로 따름 — 아래 "다음 할 일 후보"의 멤버 권한 검증 항목이 해결되면 같이 처리하면 됨).
+2. **쿠팡 최저가 검색 (`GET /coupang/search?keyword=&limit=`)**: **쿠팡파트너스 Open API**(`GET .../affiliate_open_api/apis/openapi/products/search`)를 HMAC-SHA256 서명(`CoupangProductClient.generateAuthorization()`, 알고리즘명 `CEA`)으로 직접 호출. `COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY` 필요(환경설정 섹션 참고). 키가 없거나 호출이 실패하면 예외를 던지지 않고 **빈 리스트**를 반환(다른 외부 API 클라이언트들과 동일한 방어적 설계 — `ClaudeNutritionClient`/`YoutubeSearchClient`도 실패 시 각각 empty/캐시로 대체).
+   - **겪은 버그 (수정함)**: 실제 키로 처음 호출했을 때 `401 Invalid signature`가 남. 원인은 `RestClient.get().uri(String)`에 이미 퍼센트 인코딩된 쿼리 문자열을 그대로 넘겼더니, 내부적으로 `UriComponentsBuilder`가 이걸 다시 인코딩(이중 인코딩)해버려서 실제 전송된 쿼리와 서명에 쓴 쿼리가 달라진 것. `URI.create(...)`로 URI를 직접 만들어 `.uri(URI)`로 넘기는 방식으로 재인코딩을 우회해서 해결함. **실제 키로 라이브 검증 완료** — "양송이스프" 검색 시 실제 쿠팡 상품/가격/이미지/링크가 정상적으로 옴.
+   - JSON 응답 필드명 주의: Java 필드는 `isRocket`/`isFreeShipping`이지만 boolean getter 관례상 JSON에는 `rocket`/`freeShipping`으로 내려감(`isGuest`→`guest`와 동일한 패턴).
+3. **AI 레시피 ↔ 장보기 연동**: `RecipeIngredientResponse`에 `inFridge`(Boolean, nullable) 추가. `POST /fridges/{fridgeId}/recipes/generate`는 항상 그 fridgeId 기준으로 계산해서 내려주고, `GET /recipes/{id}?fridgeId=`도 쿼리파라미터로 주면 같은 걸 계산함(안 주면 전부 null). 매칭은 `Ingredient` 마스터 매칭 여부(`matched`)와 무관하게 **이름을 정규화(trim+소문자)해서 냉장고 재료 이름 집합과 비교**하는 방식(`RecipeService.normalizeNames()`) — `RecipeIngredient.ingredient`가 null이어도(매칭 안 된 텍스트 재료) 이름만 같으면 in Fridge로 잡힘. 프론트는 `inFridge:false`인 재료 옆에 "장바구니에 담기" 버튼을 두고, 누르면 그 `ingredientNameText`로 바로 6번(장보기 추가) API를 호출하면 됨 — 별도의 "레시피 재료→장바구니" 전용 API는 만들지 않음(기존 장보기 추가 API 재사용).
 
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 

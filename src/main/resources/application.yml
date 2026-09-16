@@ -40,3 +40,7 @@ anthropic:
 
 youtube:
   api-key: ${YOUTUBE_API_KEY}
+
+coupang:
+  access-key: ${COUPANG_ACCESS_KEY}
+  secret-key: ${COUPANG_SECRET_KEY}

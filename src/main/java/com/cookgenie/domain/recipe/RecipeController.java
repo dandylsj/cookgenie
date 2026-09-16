@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 레시피 목록/상세 조회, 삭제 API. */
@@ -35,12 +36,18 @@ public class RecipeController {
         return ResponseEntity.ok(GlobalResponse.success(recipeService.listRecipes()));
     }
 
-    /** GET /recipes/{id} - 레시피 상세 조회 */
-    @Operation(summary = "레시피 상세 조회", description = "재료 목록, 조리 순서, 태그를 포함한 레시피 상세 정보를 조회합니다.")
+    /** GET /recipes/{id} - 레시피 상세 조회 (fridgeId를 주면 재료별 inFridge 여부도 함께 계산) */
+    @Operation(
+            summary = "레시피 상세 조회",
+            description = "재료 목록, 조리 순서, 태그를 포함한 레시피 상세 정보를 조회합니다. fridgeId를 함께 주면 "
+                    + "각 재료(ingredients[].inFridge)가 그 냉장고에 있는지 여부도 계산해서 내려줍니다 "
+                    + "(false인 재료 옆에 '장바구니에 담기' 버튼을 노출하는 용도)."
+    )
     @GetMapping("/{id}")
     public ResponseEntity<GlobalResponse<RecipeResponse>> getRecipe(
-            @Parameter(description = "레시피 ID") @PathVariable Long id) {
-        return ResponseEntity.ok(GlobalResponse.success(recipeService.getRecipe(id)));
+            @Parameter(description = "레시피 ID") @PathVariable Long id,
+            @Parameter(description = "냉장고 ID (선택)") @RequestParam(required = false) Long fridgeId) {
+        return ResponseEntity.ok(GlobalResponse.success(recipeService.getRecipe(id, fridgeId)));
     }
 
     /** DELETE /recipes/{id} - 레시피 삭제 */

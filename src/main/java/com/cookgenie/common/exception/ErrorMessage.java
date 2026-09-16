@@ -23,6 +23,7 @@ public enum ErrorMessage {
 
     INVALID_INVITE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않거나 만료된 초대코드입니다."),
     ALREADY_FRIDGE_MEMBER(HttpStatus.CONFLICT, "이미 참여하고 있는 냉장고입니다."),
+    SHOPPING_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "장보기 항목을 찾을 수 없습니다."),
 
     FRIDGE_HAS_NO_ITEMS(HttpStatus.BAD_REQUEST, "냉장고에 재료가 없습니다."),
     RECIPE_NOTE_REQUIRED(HttpStatus.BAD_REQUEST, "냉장고 재료를 사용하지 않을 경우 원하는 레시피 내용을 입력해야 합니다."),

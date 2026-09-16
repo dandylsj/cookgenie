@@ -6,6 +6,7 @@ import com.cookgenie.domain.recipe.entity.RecipeType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import lombok.Getter;
 
 @Getter
@@ -32,6 +33,12 @@ public class RecipeResponse {
     private final LocalDateTime updatedAt;
 
     public RecipeResponse(Recipe recipe, List<RecipeIngredient> ingredients, List<String> tags) {
+        this(recipe, ingredients, tags, null);
+    }
+
+    /** fridgeIngredientNames를 주면 각 재료의 inFridge(그 냉장고에 있는지)를 함께 계산해 내려준다. */
+    public RecipeResponse(Recipe recipe, List<RecipeIngredient> ingredients, List<String> tags,
+                           Set<String> fridgeIngredientNames) {
         this.id = recipe.getId();
         this.title = recipe.getTitle();
         this.recipeType = recipe.getRecipeType();
@@ -50,7 +57,9 @@ public class RecipeResponse {
         this.likeCount = recipe.getLikeCount();
         this.saveCount = recipe.getSaveCount();
         this.tags = tags;
-        this.ingredients = ingredients.stream().map(RecipeIngredientResponse::new).toList();
+        this.ingredients = ingredients.stream()
+                .map(ri -> new RecipeIngredientResponse(ri, fridgeIngredientNames))
+                .toList();
         this.createdAt = recipe.getCreatedAt();
         this.updatedAt = recipe.getUpdatedAt();
     }

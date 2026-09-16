@@ -512,6 +512,8 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 **에러**: 냉장고 없음(404), 냉장고에 재료 없음(400 — `useFridgeIngredients=true`일 때만), 레시피 생성 실패(502 — Claude 호출 실패/크레딧 부족 등)
 
+이 API는 항상 이 fridgeId 기준으로 `ingredients[].inFridge`를 계산해서 내려줍니다(6번 장보기 기능과 연동 — 아래 참고).
+
 ---
 
 ### 5.2 재료 기반 레시피 추천 — `GET /fridges/{fridgeId}/recipes/recommendations?limit=`
@@ -563,9 +565,11 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
 
 **Response** `200 OK` — `GlobalResponse<List<RecipeSummaryResponse>>`
 
-### 5.6 레시피 상세 조회 — `GET /recipes/{id}`
+### 5.6 레시피 상세 조회 — `GET /recipes/{id}?fridgeId=`
 
-**Response** `200 OK` — `GlobalResponse<RecipeResponse>` · **에러**: 레시피 없음(404)
+`fridgeId`를 함께 주면 그 냉장고 기준으로 `ingredients[].inFridge`를 계산해서 내려줍니다. 생략하면 `inFridge`는 전부 `null`입니다(어떤 냉장고 기준인지 모르므로).
+
+**Response** `200 OK` — `GlobalResponse<RecipeResponse>` · **에러**: 레시피 없음(404), 냉장고 없음(404 — `fridgeId`를 줬는데 존재하지 않는 경우)
 
 ### 5.7 레시피 삭제 — `DELETE /recipes/{id}`
 
@@ -596,9 +600,83 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
 | ingredients | `RecipeIngredientResponse[]` |
 | createdAt / updatedAt | LocalDateTime |
 
-**`RecipeIngredientResponse`**: `id`, `ingredientId`(매칭 안 되면 null), `ingredientNameText`, `quantityText`, `quantityValue`, `unit`, `matched`(boolean — ingredientId 유무와 동일)
+**`RecipeIngredientResponse`**: `id`, `ingredientId`(매칭 안 되면 null), `ingredientNameText`, `quantityText`, `quantityValue`, `unit`, `matched`(boolean — ingredientId 유무와 동일), `inFridge`(Boolean \| null — fridgeId 문맥이 있을 때만 true/false, 없으면 null. `false`인 재료 옆에 "장바구니에 담기" 버튼을 두고 눌렀을 때 6.1로 그 재료 이름을 추가하면 됩니다)
 
 **`RecipeSummaryResponse`** (목록/추천용, `RecipeResponse`에서 `instructions`/`sourceUrl`/`authorNickname`/`tags`/`ingredients` 제외 + `matchedIngredientCount`/`totalIngredientCount`(Integer, null 가능) 추가
+
+---
+
+## 6. 장보기 API (`/fridges/{fridgeId}/shopping-items`)
+
+**전부 인증 필요.** 장보기 리스트는 **냉장고별로 별도** 관리됩니다(같은 냉장고를 공유하는 멤버끼리 하나의 리스트를 같이 봄).
+
+### 6.1 장보기 항목 추가 — `POST /fridges/{fridgeId}/shopping-items`
+
+레시피 상세(5.1/5.6)에서 `inFridge: false`로 표시된 재료의 "장바구니에 담기" 버튼을 누르면, 그 재료의 `ingredientNameText`를 `name`으로 그대로 이 API에 보내면 됩니다. 재료 추가 화면과 동일하게 카테고리별 추천 재료(4.3)를 보여주고 그 이름을 그대로 써도 됩니다 — 이 API는 영양정보 추정 없이 이름만 저장하는 단순 리스트입니다.
+
+**Request Body** (`ShoppingItemAddRequest`)
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| name | String | O |
+
+**Response** `200 OK` — `GlobalResponse<ShoppingItemResponse>`
+
+**에러**: 냉장고 없음(404)
+
+---
+
+### 6.2 장보기 목록 조회 — `GET /fridges/{fridgeId}/shopping-items`
+
+미완료 항목이 먼저, 그다음 최신 등록순으로 정렬됩니다.
+
+**Response** `200 OK` — `GlobalResponse<List<ShoppingItemResponse>>`
+
+---
+
+### 6.3 장보기 항목 체크 — `PATCH /fridges/{fridgeId}/shopping-items/{itemId}`
+
+**Request Body** (`ShoppingItemCheckRequest`)
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| checked | Boolean | O |
+
+**Response** `200 OK` — `GlobalResponse<ShoppingItemResponse>` · **에러**: 항목 없음(404)
+
+---
+
+### 6.4 장보기 항목 삭제 — `DELETE /fridges/{fridgeId}/shopping-items/{itemId}`
+
+**Response** `204 No Content` · **에러**: 항목 없음(404)
+
+### 공통 DTO — `ShoppingItemResponse`
+
+| 필드 | 타입 |
+|---|---|
+| id | Long |
+| name | String |
+| checked | boolean |
+| createdAt | LocalDateTime |
+
+---
+
+## 7. 쿠팡 최저가 검색 API (`/coupang`)
+
+**인증 필요.** 쿠팡파트너스 Open API(상품검색)를 이용해 재료/상품명으로 쿠팡 상품을 검색합니다. 장보기 항목 화면에서 "최저가 확인" 버튼을 누르면 그 항목의 `name`으로 `keyword`를 채워 호출하면 됩니다.
+
+### 7.1 쿠팡 최저가 검색 — `GET /coupang/search?keyword=&limit=`
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| keyword | String | O | 검색어 (예: "양송이스프") |
+| limit | Integer | X | 최대 개수 (기본 10, 최대 30) |
+
+**Response** `200 OK` — `GlobalResponse<List<CoupangProductResponse>>` — 쿠팡이 반환하는 순서 그대로 내려줍니다(정렬 로직 없음).
+
+**`CoupangProductResponse`**: `productId`, `name`, `price`(Long, 원), `imageUrl`, `productUrl`(쿠팡파트너스 링크 — 클릭 시 수수료 발생 가능), `rocket`(boolean, 로켓배송 여부), `freeShipping`(boolean). ⚠️ Java 필드명은 `isRocket`/`isFreeShipping`이지만 boolean getter라 JSON에는 `is` 접두사 없이 `rocket`/`freeShipping`으로 내려갑니다.
+
+**참고**: 쿠팡 서버 오류/키 미설정/네트워크 실패 시 예외 대신 **빈 리스트**를 반환합니다(검색 결과 없음과 동일하게 처리 — 프론트에서 별도 에러 분기 불필요).
 
 ---
 

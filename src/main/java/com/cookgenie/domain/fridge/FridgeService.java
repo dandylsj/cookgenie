@@ -11,6 +11,7 @@ import com.cookgenie.domain.fridge.entity.FridgeRole;
 import com.cookgenie.domain.fridge.repository.FridgeItemRepository;
 import com.cookgenie.domain.fridge.repository.FridgeMemberRepository;
 import com.cookgenie.domain.fridge.repository.FridgeRepository;
+import com.cookgenie.domain.shopping.repository.ShoppingItemRepository;
 import com.cookgenie.domain.user.entity.User;
 import com.cookgenie.domain.user.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ public class FridgeService {
     private final FridgeRepository fridgeRepository;
     private final FridgeMemberRepository fridgeMemberRepository;
     private final FridgeItemRepository fridgeItemRepository;
+    private final ShoppingItemRepository shoppingItemRepository;
     private final UserRepository userRepository;
 
     /** 냉장고 생성. 생성자를 OWNER 역할의 FridgeMember로 함께 등록한다. */
@@ -85,6 +87,7 @@ public class FridgeService {
         }
 
         fridgeItemRepository.deleteByFridgeId(fridgeId);
+        shoppingItemRepository.deleteByFridgeId(fridgeId);
         fridgeMemberRepository.deleteByFridgeId(fridgeId);
         fridgeRepository.delete(member.getFridge());
     }

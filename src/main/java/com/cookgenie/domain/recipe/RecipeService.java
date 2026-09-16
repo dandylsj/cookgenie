@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,13 +64,14 @@ public class RecipeService {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
 
+        List<FridgeItem> fridgeItems = fridgeItemRepository.findByFridgeId(fridgeId);
+
         List<String> ingredientNames = List.of();
         if (request.isUseFridgeIngredients()) {
-            List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
-            if (items.isEmpty()) {
+            if (fridgeItems.isEmpty()) {
                 throw new CustomException(ErrorMessage.FRIDGE_HAS_NO_ITEMS);
             }
-            ingredientNames = items.stream()
+            ingredientNames = fridgeItems.stream()
                     .map(item -> item.getIngredient().getName())
                     .distinct()
                     .toList();
@@ -97,7 +99,9 @@ public class RecipeService {
         List<RecipeIngredient> savedIngredients = saveGeneratedIngredients(recipe, generated);
         List<String> savedTagNames = saveGeneratedTags(recipe, generated);
 
-        return new RecipeResponse(recipe, savedIngredients, savedTagNames);
+        Set<String> fridgeIngredientNames = normalizeNames(fridgeItems.stream()
+                .map(item -> item.getIngredient().getName()));
+        return new RecipeResponse(recipe, savedIngredients, savedTagNames, fridgeIngredientNames);
     }
 
     /** 냉장고 재료와 겹치는 재료가 많은 순으로 기존 레시피를 추천한다. 하나도 안 겹치는 레시피는 제외한다. */
@@ -155,9 +159,24 @@ public class RecipeService {
     /** 레시피 상세 조회. */
     @Transactional(readOnly = true)
     public RecipeResponse getRecipe(Long recipeId) {
+        return getRecipe(recipeId, null);
+    }
+
+    /** 레시피 상세 조회. fridgeId를 주면 각 재료의 inFridge(그 냉장고에 있는지) 여부도 함께 계산해준다. */
+    @Transactional(readOnly = true)
+    public RecipeResponse getRecipe(Long recipeId, Long fridgeId) {
         Recipe recipe = recipeRepository.findById(recipeId)
                 .orElseThrow(() -> new CustomException(ErrorMessage.RECIPE_NOT_FOUND));
-        return toResponse(recipe);
+
+        if (fridgeId == null) {
+            return toResponse(recipe, null);
+        }
+        if (!fridgeRepository.existsById(fridgeId)) {
+            throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
+        }
+        Set<String> fridgeIngredientNames = normalizeNames(fridgeItemRepository.findByFridgeId(fridgeId).stream()
+                .map(item -> item.getIngredient().getName()));
+        return toResponse(recipe, fridgeIngredientNames);
     }
 
     /** 냉장고 재료(또는 keyword)를 기반으로 유튜브 요리 영상을 검색한다. 저장하지 않고 미리보기 목록만 보여준다. */
@@ -264,11 +283,20 @@ public class RecipeService {
     }
 
     private RecipeResponse toResponse(Recipe recipe) {
+        return toResponse(recipe, null);
+    }
+
+    private RecipeResponse toResponse(Recipe recipe, Set<String> fridgeIngredientNames) {
         List<RecipeIngredient> ingredients = recipeIngredientRepository.findByRecipeId(recipe.getId());
         List<String> tagNames = recipeTagRepository.findByIdRecipeId(recipe.getId()).stream()
                 .map(rt -> rt.getTag().getName())
                 .toList();
-        return new RecipeResponse(recipe, ingredients, tagNames);
+        return new RecipeResponse(recipe, ingredients, tagNames, fridgeIngredientNames);
+    }
+
+    /** 재료 이름들을 소문자/trim으로 정규화한 Set으로 만든다 (냉장고 보유 여부 비교용). */
+    private Set<String> normalizeNames(Stream<String> names) {
+        return names.map(name -> name.trim().toLowerCase()).collect(Collectors.toSet());
     }
 
     /** 냉장고 재료 이름 중 일부로 유튜브 검색어를 만든다. 재료가 없으면 예외. */
