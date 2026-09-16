@@ -18,6 +18,13 @@ public class ClaudeRecipeClient {
 
     private static final String TOOL_NAME = "record_generated_recipe";
 
+    private static final String DETAIL_INSTRUCTION =
+            "조리 순서는 실제로 요리해본 사람이 옆에서 알려주듯 최소 5단계 이상으로 자세히 나눠서 설명해줘. "
+                    + "각 단계마다 구체적인 시간(예: \"약 4분간\"), 불 세기(약불/중불/센불), 재료 손질 방법, "
+                    + "다 됐는지 확인하는 방법(색깔·촉감·소리 등)을 가능한 포함해줘. "
+                    + "\"적당히 볶는다\", \"알맞게 익힌다\"처럼 모호한 표현은 쓰지 말고, "
+                    + "초보자도 그대로 따라 할 수 있을 정도로 구체적으로 작성해줘.";
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String model;
@@ -44,15 +51,17 @@ public class ClaudeRecipeClient {
                 ? "다음 요청에 맞는 요리 레시피를 하나 제안해줘. 특정 재료에 얽매이지 말고 "
                         + "그 요리를 만드는 데 일반적으로 쓰이는 재료를 자유롭게 사용해서 요청한 요리에 충실하게 만들어줘. "
                         + "record_generated_recipe 도구를 호출해서 결과를 알려줘. 요청사항: " + note
+                        + " " + DETAIL_INSTRUCTION
                 : "다음 재료들을 활용해서 만들 수 있는 요리 레시피를 하나 제안해줘. "
                         + "보유 재료: " + String.join(", ", availableIngredients) + ". "
                         + "레시피에 꼭 저 재료만 써야 하는 건 아니고, 흔히 집에 있는 기본 양념(소금, 후추, 식용유, 간장 등)은 "
                         + "추가로 써도 돼. record_generated_recipe 도구를 호출해서 결과를 알려줘."
-                        + (note != null && !note.isBlank() ? " 추가 요청사항: " + note : "");
+                        + (note != null && !note.isBlank() ? " 추가 요청사항: " + note : "")
+                        + " " + DETAIL_INSTRUCTION;
 
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
-                1200,
+                1600,
                 List.of(new ClaudeMessageRequest.Message("user", prompt)),
                 List.of(recipeTool()),
                 Map.of("type", "tool", "name", TOOL_NAME)
@@ -80,12 +89,12 @@ public class ClaudeRecipeClient {
 
         String prompt = "다음은 유튜브 요리 영상의 제목과 설명이다. 이 영상의 레시피 정보를 최대한 정확하게 추출해줘. "
                 + "설명에 재료나 조리법이 명확히 나와있지 않으면 제목과 일반적인 요리 지식을 바탕으로 추정해도 돼. "
-                + "record_generated_recipe 도구를 호출해서 결과를 알려줘.\n\n"
+                + "record_generated_recipe 도구를 호출해서 결과를 알려줘. " + DETAIL_INSTRUCTION + "\n\n"
                 + "제목: " + videoTitle + "\n\n설명:\n" + description;
 
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
-                1200,
+                1600,
                 List.of(new ClaudeMessageRequest.Message("user", prompt)),
                 List.of(recipeTool()),
                 Map.of("type", "tool", "name", TOOL_NAME)
@@ -141,7 +150,8 @@ public class ClaudeRecipeClient {
                 "tags", Map.of("type", "array", "items", Map.of("type", "string"),
                         "description", "다이어트/고단백/저탄수/혼밥 등 태그 0~4개"),
                 "instructions", Map.of("type", "array", "items", Map.of("type", "string"),
-                        "description", "조리 순서를 단계별 문장으로")
+                        "description", "조리 순서를 단계별 문장으로. 각 단계는 시간/불 세기/확인 방법을 포함해서 "
+                                + "구체적으로 작성 (예: \"중불에서 뒤집어 4분간 노릇하게 굽는다\")")
         );
 
         Map<String, Object> inputSchema = Map.of(
