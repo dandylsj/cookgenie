@@ -40,12 +40,25 @@ public class IngredientService {
     private final FridgeItemRepository fridgeItemRepository;
     private final ClaudeNutritionClient claudeNutritionClient;
 
-    /** 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다. 100g 기준 영양정보를 함께 내려준다. */
+    /**
+     * 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다.
+     * categoryId를 주면 그 카테고리로 좁힌다 - 재료 추가 화면에서 카테고리를 고른 뒤 그 안에서
+     * (정부 공식 데이터로 이미 채워진 재료 포함) 바로 검색해서 고를 수 있게 하는 용도.
+     * 100g 기준 영양정보를 함께 내려준다.
+     */
     @Transactional(readOnly = true)
-    public List<IngredientResponse> searchIngredients(String keyword) {
-        List<Ingredient> ingredients = (keyword == null || keyword.isBlank())
-                ? ingredientRepository.findAll()
-                : ingredientRepository.findByNameContaining(keyword);
+    public List<IngredientResponse> searchIngredients(String keyword, Long categoryId) {
+        boolean hasKeyword = keyword != null && !keyword.isBlank();
+        List<Ingredient> ingredients;
+        if (categoryId != null && hasKeyword) {
+            ingredients = ingredientRepository.findByCategoryIdAndNameContaining(categoryId, keyword);
+        } else if (categoryId != null) {
+            ingredients = ingredientRepository.findByCategoryId(categoryId);
+        } else if (hasKeyword) {
+            ingredients = ingredientRepository.findByNameContaining(keyword);
+        } else {
+            ingredients = ingredientRepository.findAll();
+        }
 
         List<Long> ingredientIds = ingredients.stream().map(Ingredient::getId).toList();
         Map<Long, NutritionInfo> nutritionByIngredientId = nutritionInfoRepository.findByIngredientIdIn(ingredientIds)
@@ -266,7 +279,8 @@ public class IngredientService {
         return existing != null && existing.getReferenceUnit() != null ? existing.getReferenceUnit() : "g";
     }
 
-    private Category findOrCreateCategory(String categoryName) {
+    /** OfficialNutritionSyncService(같은 패키지)에서도 재사용해서 카테고리 생성 로직을 하나로 유지한다. */
+    Category findOrCreateCategory(String categoryName) {
         String name = (categoryName == null || categoryName.isBlank()) ? "기타" : categoryName;
         return categoryRepository.findByName(name)
                 .orElseGet(() -> categoryRepository.save(Category.builder().name(name).build()));

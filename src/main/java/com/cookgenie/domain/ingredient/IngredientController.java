@@ -32,13 +32,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class IngredientController {
 
     private final IngredientService ingredientService;
+    private final OfficialNutritionSyncService officialNutritionSyncService;
 
-    /** GET /ingredients?keyword= - 이름으로 식재료 검색 (keyword 없으면 전체 목록) */
-    @Operation(summary = "식재료 검색", description = "이름에 keyword가 포함된 식재료를 검색합니다. keyword가 없으면 전체 목록을 반환합니다.")
+    /** GET /ingredients?keyword=&categoryId= - 이름/카테고리로 식재료 검색 (둘 다 없으면 전체 목록) */
+    @Operation(
+            summary = "식재료 검색",
+            description = "이름에 keyword가 포함된 식재료를 검색합니다. categoryId를 함께 주면 그 카테고리 안에서만 "
+                    + "찾습니다(재료 추가 화면에서 카테고리를 고른 뒤 그 안의 기존 재료를 검색해서 바로 고를 때 사용)."
+    )
     @GetMapping
     public ResponseEntity<GlobalResponse<List<IngredientResponse>>> searchIngredients(
-            @Parameter(description = "검색 키워드") @RequestParam(required = false) String keyword) {
-        return ResponseEntity.ok(GlobalResponse.success(ingredientService.searchIngredients(keyword)));
+            @Parameter(description = "검색 키워드") @RequestParam(required = false) String keyword,
+            @Parameter(description = "카테고리 ID") @RequestParam(required = false) Long categoryId) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.searchIngredients(keyword, categoryId)));
     }
 
     /** GET /ingredients/categories - 식재료 카테고리 전체 목록 조회 */
@@ -110,6 +116,19 @@ public class IngredientController {
     public ResponseEntity<GlobalResponse<IngredientResponse>> estimateNutrition(
             @Parameter(description = "식재료 ID") @PathVariable Long id) {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.estimateNutrition(id)));
+    }
+
+    /** POST /ingredients/sync-official-nutrition - 공공데이터포털 원재료성식품 CSV 동기화 */
+    @Operation(
+            summary = "식약처 공식 영양정보 동기화",
+            description = "공공데이터포털 원재료성식품 표준데이터(농촌진흥청 농산물 + 해양수산부 수산물, 앱에 "
+                    + "번들된 CSV)를 대표식품코드 기준으로 묶어서(품종/조리상태 차이는 대표값 하나로 합침, "
+                    + "가능하면 '생것' 우선) 아직 등록되지 않은 이름만 새 식재료로 등록합니다(dataSource=OFFICIAL_DB). "
+                    + "이미 있는 재료는 덮어쓰지 않고 건너뜁니다."
+    )
+    @PostMapping("/sync-official-nutrition")
+    public ResponseEntity<GlobalResponse<OfficialNutritionSyncService.SyncResult>> syncOfficialNutrition() {
+        return ResponseEntity.ok(GlobalResponse.success(officialNutritionSyncService.syncFromCsv()));
     }
 
     /** DELETE /ingredients/{id} - 식재료 삭제 (냉장고에 등록되어 있으면 삭제 불가) */

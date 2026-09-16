@@ -15,4 +15,8 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
     List<Ingredient> findByNameContaining(String name);
 
     List<Ingredient> findByDataSourceAndIsVerified(DataSource dataSource, Boolean isVerified);
+
+    List<Ingredient> findByCategoryId(Long categoryId);
+
+    List<Ingredient> findByCategoryIdAndNameContaining(Long categoryId, String name);
 }
