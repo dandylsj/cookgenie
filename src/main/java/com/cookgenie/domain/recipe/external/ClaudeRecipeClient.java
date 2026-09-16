@@ -2,6 +2,7 @@ package com.cookgenie.domain.recipe.external;
 
 import com.cookgenie.common.client.anthropic.ClaudeMessageRequest;
 import com.cookgenie.common.client.anthropic.ClaudeMessageResponse;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -61,7 +62,7 @@ public class ClaudeRecipeClient {
 
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
-                1600,
+                2200,
                 List.of(new ClaudeMessageRequest.Message("user", prompt)),
                 List.of(recipeTool()),
                 Map.of("type", "tool", "name", TOOL_NAME)
@@ -94,7 +95,7 @@ public class ClaudeRecipeClient {
 
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
-                1600,
+                2200,
                 List.of(new ClaudeMessageRequest.Message("user", prompt)),
                 List.of(recipeTool()),
                 Map.of("type", "tool", "name", TOOL_NAME)
@@ -138,27 +139,28 @@ public class ClaudeRecipeClient {
                 "required", List.of("name", "quantityText")
         );
 
-        Map<String, Object> properties = Map.of(
-                "title", Map.of("type", "string", "description", "레시피 제목"),
-                "cookingType", Map.of("type", "string", "description", "조리 종류, 예: 볶음/찌개/국/조림/구이/무침 등"),
-                "servingSize", Map.of("type", "integer", "description", "몇 인분 기준인지"),
-                "caloriesPerServing", Map.of("type", "integer", "description", "1인분 기준 열량(kcal)"),
-                "carbohydrateG", Map.of("type", "number", "description", "1인분 기준 탄수화물(g)"),
-                "proteinG", Map.of("type", "number", "description", "1인분 기준 단백질(g)"),
-                "fatG", Map.of("type", "number", "description", "1인분 기준 지방(g)"),
-                "ingredients", Map.of("type", "array", "description", "필요한 재료 목록", "items", ingredientItemSchema),
-                "tags", Map.of("type", "array", "items", Map.of("type", "string"),
-                        "description", "다이어트/고단백/저탄수/혼밥 등 태그 0~4개"),
-                "instructions", Map.of("type", "array", "items", Map.of("type", "string"),
-                        "description", "조리 순서를 단계별 문장으로. 각 단계는 시간/불 세기/확인 방법을 포함해서 "
-                                + "구체적으로 작성 (예: \"중불에서 뒤집어 4분간 노릇하게 굽는다\")")
-        );
+        // LinkedHashMap으로 순서를 고정: max_tokens에 걸려 응답이 잘려도 instructions가 먼저
+        // 채워지도록 ingredients/tags보다 앞에 둔다(Map.of는 순서가 보장되지 않아 위험함).
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("title", Map.of("type", "string", "description", "레시피 제목"));
+        properties.put("cookingType", Map.of("type", "string", "description", "조리 종류, 예: 볶음/찌개/국/조림/구이/무침 등"));
+        properties.put("servingSize", Map.of("type", "integer", "description", "몇 인분 기준인지"));
+        properties.put("caloriesPerServing", Map.of("type", "integer", "description", "1인분 기준 열량(kcal)"));
+        properties.put("carbohydrateG", Map.of("type", "number", "description", "1인분 기준 탄수화물(g)"));
+        properties.put("proteinG", Map.of("type", "number", "description", "1인분 기준 단백질(g)"));
+        properties.put("fatG", Map.of("type", "number", "description", "1인분 기준 지방(g)"));
+        properties.put("instructions", Map.of("type", "array", "items", Map.of("type", "string"),
+                "description", "조리 순서를 단계별 문장으로. 각 단계는 시간/불 세기/확인 방법을 포함해서 "
+                        + "구체적으로 작성 (예: \"중불에서 뒤집어 4분간 노릇하게 굽는다\")"));
+        properties.put("ingredients", Map.of("type", "array", "description", "필요한 재료 목록", "items", ingredientItemSchema));
+        properties.put("tags", Map.of("type", "array", "items", Map.of("type", "string"),
+                "description", "다이어트/고단백/저탄수/혼밥 등 태그 0~4개"));
 
         Map<String, Object> inputSchema = Map.of(
                 "type", "object",
                 "properties", properties,
                 "required", List.of("title", "cookingType", "servingSize", "caloriesPerServing",
-                        "carbohydrateG", "proteinG", "fatG", "ingredients", "instructions")
+                        "carbohydrateG", "proteinG", "fatG", "instructions", "ingredients")
         );
 
         return Map.of(

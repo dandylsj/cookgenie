@@ -85,6 +85,12 @@ COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 
 `ClaudeRecipeClient`에 `DETAIL_INSTRUCTION` 상수를 추가해서 `generate()`/`parseFromYoutube()` 프롬프트 끝에 공통으로 붙임: "최소 5단계 이상으로 나누고, 각 단계마다 시간/불 세기/재료 손질법/익었는지 확인하는 방법을 포함해라, '적당히'/'알맞게' 같은 모호한 표현은 쓰지 마라"는 내용. `recipeTool()`의 `instructions` 필드 description에도 같은 요구사항 + 구체적인 예시 문장을 넣어서 스키마 레벨에서도 한 번 더 강제함. 더 긴 응답을 감안해 `max_tokens`도 1200→1600으로 상향.
 
+## 버그: 위 프롬프트 보강 이후 일부 레시피의 조리 순서가 통째로 빈 채로 저장됨 (수정함)
+
+조리법을 더 자세히 쓰라고 프롬프트를 강화한 직후, 재료가 많거나(예: 재료 10개) 조리 순서가 긴 레시피에서 `조리 순서` 섹션이 완전히 빈 채로 저장되는 사례가 발생. 원인은 `ClaudeNutritionClient`에서 이미 한 번 겪었던 것과 같은 종류의 버그: `recipeTool()`의 JSON 스키마 `properties`를 `Map.of()`로 만들어서 필드 순서가 보장되지 않았고, 스키마상 `instructions`가 (사실상) 맨 마지막에 채워질 수 있는 위치였음. 응답이 길어지면서 `max_tokens`(1600)에 걸려 응답이 중간에 끊기면, 이미 채워진 title/영양정보/ingredients/tags는 저장되지만 아직 안 채워진 `instructions`는 그냥 누락되어(`generated.instructions()==null`) `Recipe.instructions`가 null로 저장되고, 프론트에는 "조리 순서" 헤더만 있고 내용이 하나도 없는 빈 상태로 보임.
+
+`recipeTool()`의 `properties`를 `Map.of()` → `LinkedHashMap`으로 바꾸고, `instructions`를 `ingredients`/`tags`보다 앞(영양정보 필드들 바로 다음)으로 옮겨서 응답이 잘리더라도 `instructions`가 먼저 채워지도록 순서를 고정함. `max_tokens`도 1600→2200으로 한 번 더 올려서 잘릴 가능성 자체를 낮춤. **재발 방지 참고**: Claude tool-use 스키마에서 `Map.of()`를 쓰면 안 됨 — 필드 순서가 응답 생성 순서에 영향을 주므로 항상 `LinkedHashMap`으로 순서를 명시할 것 (이미 `ClaudeNutritionClient`에도 같은 이유로 적용돼 있었는데 `ClaudeRecipeClient`엔 놓치고 있었음).
+
 ## Recipe 2단계 — 유튜브 레시피 연동
 
 - `GET /fridges/{fridgeId}/recipes/youtube/search?keyword=&limit=` — YouTube Data API v3 `search.list`로 요리 영상을 검색. `keyword`를 생략하면 냉장고 재료 이름(최대 3개)으로 검색어를 자동 구성. **결과는 저장되지 않는 미리보기**(videoId/제목/설명/채널명/썸네일/영상 URL)이고, 실제 레시피로 저장하려면 가져오기 API를 호출해야 함.
