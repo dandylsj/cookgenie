@@ -77,7 +77,13 @@ COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 - `GET /fridges/{fridgeId}/recipes/recommendations` — 냉장고 재료와 겹치는 비율이 높은 순으로 기존 레시피 추천.
 - `GET /recipes`, `GET /recipes/{id}`, `DELETE /recipes/{id}` — 기본 조회/삭제.
 - `Recipe` 엔티티에 원래 없던 `instructions`(조리법 TEXT) 컬럼을 추가함.
-- `AiRecipeGenerateRequest.useFridgeIngredients`(기본 `true`) — `false`로 보내면 냉장고 재료를 완전히 무시하고 `note`에만 맞는 레시피를 자유 생성함(`ClaudeRecipeClient.generateFreeform()`). 지금 냉장고에 없는 재료로 레시피를 시도해보고 싶다는 요청으로 추가함. `true`일 때만 냉장고에 재료가 없으면 400 에러가 남.
+- `AiRecipeGenerateRequest.useFridgeIngredients`(기본 `true`) — `false`로 보내면 냉장고 재료를 완전히 무시하고 `note`에만 맞는 레시피를 자유 생성함(`ClaudeRecipeClient.generate()`가 `availableIngredients` 빈 리스트일 때 자유 생성 분기를 탐). 지금 냉장고에 없는 재료로 레시피를 시도해보고 싶다는 요청으로 추가함. `true`일 때만 냉장고에 재료가 없으면 400 에러가 남.
+
+## 버그: AI 레시피 조리법이 너무 대략적/모호함 (프롬프트 보강으로 해결)
+
+다른 앱(만개의레시피류)과 비교하면 AI가 생성하는 `instructions`가 "적당히 볶는다"처럼 뭉뚱그려 나오는 경우가 많다는 피드백. Claude API 비용 부담 때문에 필드를 늘리는 대신(난이도/조리시간/조리도구 등 신규 컬럼 추가는 응답이 커지고 구조 변경도 필요), **기존 스키마는 그대로 두고 프롬프트만 강화**하는 쪽으로 해결함 — 추가 API 호출도, 스키마 변경도 없어서 비용 영향이 거의 없음.
+
+`ClaudeRecipeClient`에 `DETAIL_INSTRUCTION` 상수를 추가해서 `generate()`/`parseFromYoutube()` 프롬프트 끝에 공통으로 붙임: "최소 5단계 이상으로 나누고, 각 단계마다 시간/불 세기/재료 손질법/익었는지 확인하는 방법을 포함해라, '적당히'/'알맞게' 같은 모호한 표현은 쓰지 마라"는 내용. `recipeTool()`의 `instructions` 필드 description에도 같은 요구사항 + 구체적인 예시 문장을 넣어서 스키마 레벨에서도 한 번 더 강제함. 더 긴 응답을 감안해 `max_tokens`도 1200→1600으로 상향.
 
 ## Recipe 2단계 — 유튜브 레시피 연동
 
