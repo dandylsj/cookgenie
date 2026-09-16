@@ -2,6 +2,7 @@ package com.cookgenie.domain.fridge.dto;
 
 import com.cookgenie.domain.fridge.entity.FridgeItem;
 import com.cookgenie.domain.fridge.entity.StorageLocation;
+import com.cookgenie.domain.ingredient.entity.DataSource;
 import com.cookgenie.domain.ingredient.entity.NutritionInfo;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,6 +34,9 @@ public class FridgeItemResponse {
     private final BigDecimal referenceCarbohydrateG;
     private final BigDecimal referenceProteinG;
     private final BigDecimal referenceFatG;
+    /** 영양정보 출처 - OFFICIAL_DB(정부 공식 데이터)/LLM_ESTIMATED(AI 추정)/USER_INPUT(직접 입력 또는 미입력). */
+    private final DataSource nutritionDataSource;
+    private final Boolean nutritionVerified;
     private final LocalDateTime createdAt;
     private final LocalDateTime updatedAt;
 
@@ -71,6 +75,8 @@ public class FridgeItemResponse {
         this.referenceCarbohydrateG = nutritionInfo != null ? nutritionInfo.getCarbohydrateG() : null;
         this.referenceProteinG = nutritionInfo != null ? nutritionInfo.getProteinG() : null;
         this.referenceFatG = nutritionInfo != null ? nutritionInfo.getFatG() : null;
+        this.nutritionDataSource = nutritionInfo != null ? item.getIngredient().getDataSource() : null;
+        this.nutritionVerified = nutritionInfo != null ? item.getIngredient().getIsVerified() : null;
     }
 
     /** 단위가 일치할 때만(예: g-g) quantity/referenceAmount 비율을 계산하고, 아니면 null(계산 불가). */
