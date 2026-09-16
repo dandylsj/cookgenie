@@ -5,8 +5,8 @@ import com.cookgenie.common.exception.ErrorMessage;
 import com.cookgenie.domain.fridge.entity.FridgeItem;
 import com.cookgenie.domain.fridge.repository.FridgeItemRepository;
 import com.cookgenie.domain.fridge.repository.FridgeRepository;
+import com.cookgenie.domain.ingredient.IngredientService;
 import com.cookgenie.domain.ingredient.entity.Ingredient;
-import com.cookgenie.domain.ingredient.repository.IngredientRepository;
 import com.cookgenie.domain.recipe.dto.AiRecipeGenerateRequest;
 import com.cookgenie.domain.recipe.dto.RecipeResponse;
 import com.cookgenie.domain.recipe.dto.RecipeSummaryResponse;
@@ -50,7 +50,7 @@ public class RecipeService {
     private final RecipeTagRepository recipeTagRepository;
     private final FridgeRepository fridgeRepository;
     private final FridgeItemRepository fridgeItemRepository;
-    private final IngredientRepository ingredientRepository;
+    private final IngredientService ingredientService;
     private final ClaudeRecipeClient claudeRecipeClient;
     private final YoutubeSearchClient youtubeSearchClient;
 
@@ -314,14 +314,6 @@ public class RecipeService {
 
     /** 이름으로 식재료 마스터와 매칭을 시도한다. 정확히 일치하는 게 없으면 부분 일치라도 찾고, 그래도 없으면 null(텍스트로만 표시). */
     private Ingredient matchIngredient(String name) {
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        List<Ingredient> exact = ingredientRepository.findAllByName(name);
-        if (!exact.isEmpty()) {
-            return exact.get(0);
-        }
-        List<Ingredient> partial = ingredientRepository.findByNameContaining(name);
-        return partial.isEmpty() ? null : partial.get(0);
+        return ingredientService.matchByName(name).orElse(null);
     }
 }

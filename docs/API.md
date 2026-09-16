@@ -680,11 +680,53 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
 
 ---
 
+## 8. 영수증 인식 API (`/fridges/{fridgeId}/receipts`)
+
+**인증 필요.** 영수증 사진을 Claude(비전)에게 분석시켜 식재료로 보이는 품목을 추출합니다. **이 API는 아무것도 저장하지 않는 미리보기입니다** — 인식 결과를 보여주고 사용자가 확인/수정한 다음, 아래 4. 식재료 API / 3. 냉장고 재료 API를 호출해서 실제로 등록해야 합니다.
+
+### 8.1 영수증 스캔 — `POST /fridges/{fridgeId}/receipts/scan`
+
+`multipart/form-data`로 이미지 파일 하나(`image`)를 보냅니다. JPEG/PNG/WEBP만 가능하고 최대 10MB입니다.
+
+| 파트 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| image | File | O | 영수증 사진 |
+
+**Response** `200 OK` — `GlobalResponse<ReceiptScanResponse>`
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "name": "비비고 왕교자",
+        "quantityText": "500g",
+        "quantityValue": 500,
+        "unit": "g",
+        "categoryNameGuess": "냉동식품",
+        "matchedIngredientId": null,
+        "matchedCategoryId": null
+      }
+    ]
+  },
+  "message": null
+}
+```
+
+- `matchedIngredientId`가 있으면 이미 등록된 식재료와 이름이 정확히 일치(또는 포함관계로 부분 일치)한 것 — 그대로 그 `ingredientId`로 3.1(재료 추가)을 호출하면 됩니다.
+- `matchedIngredientId`가 없으면 처음 보는 이름 — 4.4(식재료 등록)에 `name`/`categoryNameGuess`(그대로 `categoryName`으로 사용 가능)를 보내서 새로 만들고, 그 응답의 `id`로 3.1을 호출하세요. 이때도 이름이 같으면 내부적으로 기존 재료가 재사용되고, 완전히 새 이름이면 Claude가 영양정보까지 자동 추정합니다.
+- 영수증에 축약되거나 코드처럼 적힌 상품명(예: "국산돈목심600")은 Claude가 일반적으로 통용되는 이름(예: "돼지 목심")으로 풀어서 내려줍니다 — 완벽하지 않을 수 있으니 프론트에서 수정 가능하게 보여주는 걸 권장합니다.
+
+**에러**: 냉장고 없음(404), 이미지 없음(400), 이미지 10MB 초과(400), 지원 안 하는 이미지 형식(400), 인식 실패(502 — Claude 호출 실패/크레딧 부족 등)
+
+---
+
 ## 아직 구현되지 않은 것
 
 - 소셜 로그인(카카오/네이버/구글/애플), 이메일 인증, 비밀번호 재설정
-- 냉장고 멤버 초대 API (`FridgeMember`를 `OWNER`가 만들 때 자동 등록만 되고, 다른 사용자를 멤버로 추가하는 API는 없음)
-- **`FridgeItem`/레시피 API들의 멤버 권한 검증** — 현재 냉장고 존재 여부만 확인하고 요청자가 해당 냉장고 멤버인지는 확인하지 않음 (2번 냉장고 API는 이미 `FridgeMember` 기반 검증 적용됨)
+- **`FridgeItem`/레시피/장보기 API들의 멤버 권한 검증** — 현재 냉장고 존재 여부만 확인하고 요청자가 해당 냉장고 멤버인지는 확인하지 않음 (2번 냉장고 API는 이미 `FridgeMember` 기반 검증 적용됨)
 - 로그아웃 시 access token 즉시 무효화 (현재는 만료시간까지 유효한 stateless JWT 한계 그대로)
 - 식단 기록(MealLog) 관련 API
 - 레시피 좋아요/저장(`likeCount`/`saveCount` 증가), 조회수 집계
+- **사진으로 재료 자동 등록 — 나머지 2단계**: 8번(영수증 스캔)에 이어서, (1) 쿠팡/네이버 등 구매내역 캡처 화면 인식, (2) 실물 상품 사진(포장지 등) 촬영으로 이름/카테고리 자동 인식 — 둘 다 8번과 같은 Claude 비전 + tool-use 패턴으로 확장 가능

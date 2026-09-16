@@ -25,6 +25,11 @@ public enum ErrorMessage {
     ALREADY_FRIDGE_MEMBER(HttpStatus.CONFLICT, "이미 참여하고 있는 냉장고입니다."),
     SHOPPING_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "장보기 항목을 찾을 수 없습니다."),
 
+    RECEIPT_IMAGE_REQUIRED(HttpStatus.BAD_REQUEST, "영수증 이미지가 필요합니다."),
+    RECEIPT_IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 용량이 너무 큽니다(최대 10MB)."),
+    UNSUPPORTED_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 이미지 형식입니다(JPEG/PNG/WEBP만 가능)."),
+    RECEIPT_SCAN_FAILED(HttpStatus.BAD_GATEWAY, "영수증 인식에 실패했습니다. 잠시 후 다시 시도해주세요."),
+
     FRIDGE_HAS_NO_ITEMS(HttpStatus.BAD_REQUEST, "냉장고에 재료가 없습니다."),
     RECIPE_NOTE_REQUIRED(HttpStatus.BAD_REQUEST, "냉장고 재료를 사용하지 않을 경우 원하는 레시피 내용을 입력해야 합니다."),
     RECIPE_GENERATION_FAILED(HttpStatus.BAD_GATEWAY, "레시피 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),

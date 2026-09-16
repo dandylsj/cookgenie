@@ -46,6 +46,7 @@ COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 
 - **Spring Boot 4.1.0은 Jackson 3(`tools.jackson.*`)을 씀** — `jackson-core`/`jackson-databind`는 `tools.jackson.core`/`tools.jackson.databind`로 이동했지만, `jackson-annotations`는 여전히 `com.fasterxml.jackson.annotation.*`. `ObjectMapper`를 직접 주입할 땐 반드시 `tools.jackson.databind.ObjectMapper`를 써야 함 (`com.fasterxml.jackson.databind.ObjectMapper`는 빈이 없어서 기동 실패).
 - Windows Git Bash에서 curl로 한글을 직접 `-d`에 넣으면 인코딩이 깨짐 — 테스트할 땐 JSON을 파일로 먼저 만들고 `--data-binary @파일`로 보낼 것.
+- Windows Git Bash의 curl(8.17, mingw 빌드)에서 `-F "image=@경로;type=image/png"`처럼 `;type=`을 붙이면 원인 불명으로 `exit 26 (Failed to read local file)`이 남 — 파일은 실제로 존재하고 다른 호스트(httpbin 등)로는 정상 업로드됨. `;type=...` 없이 `-F "image=@경로"`만 쓰면 정상 동작(Spring이 확장자로 content-type 잘 추론함).
 - gradlew 파일이 Windows에서 커밋되면 실행권한이 없어서 GitHub Actions(ubuntu-latest)에서 `Permission denied`로 실패함 → `git update-index --chmod=+x gradlew` 처리 완료.
 
 ## 도메인별 구현 현황
@@ -57,6 +58,7 @@ COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
 | Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제. **각 재료의 냉장고 보유 여부(inFridge)도 계산** |
+| Receipt(영수증 인식) | **1/3단계 완료**: 영수증 사진 → Claude 비전으로 식재료 후보 추출(미리보기만, 저장은 안 함). 구매내역 캡처/실물 사진 인식은 미착수 |
 | Shopping(장보기) | 완료 — 냉장고별 장보기 리스트 추가/조회/체크/삭제, **쿠팡파트너스 연동 최저가 검색** |
 | MealLog / NutritionGoal | 엔티티만 있고 API 없음 |
 | 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 | 미구현 |
@@ -142,10 +144,23 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
    - JSON 응답 필드명 주의: Java 필드는 `isRocket`/`isFreeShipping`이지만 boolean getter 관례상 JSON에는 `rocket`/`freeShipping`으로 내려감(`isGuest`→`guest`와 동일한 패턴).
 3. **AI 레시피 ↔ 장보기 연동**: `RecipeIngredientResponse`에 `inFridge`(Boolean, nullable) 추가. `POST /fridges/{fridgeId}/recipes/generate`는 항상 그 fridgeId 기준으로 계산해서 내려주고, `GET /recipes/{id}?fridgeId=`도 쿼리파라미터로 주면 같은 걸 계산함(안 주면 전부 null). 매칭은 `Ingredient` 마스터 매칭 여부(`matched`)와 무관하게 **이름을 정규화(trim+소문자)해서 냉장고 재료 이름 집합과 비교**하는 방식(`RecipeService.normalizeNames()`) — `RecipeIngredient.ingredient`가 null이어도(매칭 안 된 텍스트 재료) 이름만 같으면 in Fridge로 잡힘. 프론트는 `inFridge:false`인 재료 옆에 "장바구니에 담기" 버튼을 두고, 누르면 그 `ingredientNameText`로 바로 6번(장보기 추가) API를 호출하면 됨 — 별도의 "레시피 재료→장바구니" 전용 API는 만들지 않음(기존 장보기 추가 API 재사용).
 
+## 사진으로 재료 자동 등록 — 1단계: 영수증 인식
+
+원래 앱 기획에 있던 "사진으로 재료 등록" 3가지 방법(영수증 사진 / 쿠팡·네이버 구매내역 캡처 / 실물 상품 사진) 중 첫 번째. 나머지 둘은 미착수.
+
+- `domain/receipt/` 신규 패키지. `POST /fridges/{fridgeId}/receipts/scan` — `multipart/form-data`로 영수증 이미지(JPEG/PNG/WEBP, 최대 10MB)를 받아 Claude **비전**에게 분석시켜 식재료 후보 목록(이름/수량/카테고리 추정)을 뽑아준다.
+- **이 API는 아무것도 저장하지 않는 순수 미리보기**다 — 영수증 항목명은 "국산돈목심600"처럼 축약/코드화되어 있어서 그대로 자동 등록하면 안 되고(사용자 지시: 완전 자동보다 확인 단계 필요), 인식 결과를 프론트가 보여주고 사용자가 확인/수정한 뒤 **기존** `POST /ingredients`(4.4) + `POST /fridges/{fridgeId}/items`(3.1)를 그대로 호출해서 등록하는 구조로 설계함 — 새로 "일괄 등록" API를 만들지 않고 이미 검증된 두 엔드포인트를 재사용.
+- 비전 지원을 위해 `common/client/anthropic/ClaudeMessageRequest.Message.content`를 `String`에서 `Object`로 바꾸고, `Message.withImage(role, text, mediaType, base64Data)` 팩토리 메서드를 추가함(text+image content block 배열). 기존 `ClaudeNutritionClient`/`ClaudeRecipeClient`는 여전히 `new Message("user", 문자열)`을 그대로 쓰므로 호환됨 — String도 Object라서 컴파일에 영향 없음.
+- 새 클라이언트 `domain/receipt/external/ClaudeReceiptClient`: 텍스트 프롬프트 없이 이미지만 보내는 게 아니라 "영수증에서 식재료만 골라 이름/수량/카테고리를 추출해달라"는 프롬프트 + 이미지를 함께 보내고, `record_receipt_items` tool-use로 구조화된 결과를 받음(기존 `ClaudeNutritionClient`/`ClaudeRecipeClient`와 동일한 tool-use 패턴).
+- 이름 매칭: `IngredientService`에 `matchByName(name)`(정확 일치 → 부분 일치 순) public 메서드를 새로 뽑아냄 — 기존에 `RecipeService`에 똑같은 로직이 private으로 중복되어 있었는데, `ReceiptService`까지 세 번째로 똑같이 베끼는 대신 `IngredientService`(식재료 매칭의 자연스러운 소유자)로 옮기고 `RecipeService.matchIngredient()`는 이걸 위임 호출하도록 리팩터링함.
+- 로컬 검증: PowerShell `System.Drawing`으로 가짜 영수증 이미지(품목 5개)를 만들어 스캔 → 실제로 항목/카테고리 추정 정상 인식 → 인식된 이름으로 `POST /ingredients`(영양정보 자동 추정까지) → `POST /fridges/{fridgeId}/items` 등록까지 end-to-end 확인 완료.
+- 겪은 삽질: Windows Git Bash curl에서 `-F "image=@경로;type=image/png"`처럼 `;type=`을 붙이면 `exit 26`으로 파일을 못 읽는다고 나옴(원인 불명, 다른 호스트로는 정상 업로드됨) — `;type=` 빼고 `-F "image=@경로"`만 쓰면 정상(위 "기술적 특이사항" 섹션에도 기록).
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
-- `FridgeItem`/`Recipe` API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
+- `FridgeItem`/`Recipe`/장보기 API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
 - 프론트엔드의 "영양정보 동기화" 버튼 — 이제 없는 엔드포인트(`/ingredients/sync-raw-materials`)를 호출하고 있어서 프론트에서 제거 필요
 - 기존에 영양정보 없이 등록된 재료들(예: 계란/목살/양파/소금 등)을 일괄로 재추정하는 백필(backfill) 기능 (요청은 있었으나 미구현)
 - 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 / 로그아웃 시 JWT 즉시 무효화
 - 식단 기록(MealLog) API
+- **사진으로 재료 등록 2/3단계**: 쿠팡/네이버 구매내역 캡처 화면 인식, 실물 상품 사진 인식(예: 만두 포장 사진 → 이름/카테고리 자동 인식) — 둘 다 방금 만든 `ClaudeReceiptClient`/비전 패턴을 그대로 확장하면 됨

@@ -122,6 +122,21 @@ public class IngredientService {
         return new IngredientResponse(ingredient, nutritionInfo);
     }
 
+    /** 이름으로 식재료 마스터와 매칭을 시도한다. 정확히 일치하는 게 없으면 부분 일치라도 찾고, 그래도 없으면 empty. */
+    @Transactional(readOnly = true)
+    public Optional<Ingredient> matchByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = name.trim();
+        List<Ingredient> exact = ingredientRepository.findAllByName(trimmed);
+        if (!exact.isEmpty()) {
+            return Optional.of(exact.get(0));
+        }
+        List<Ingredient> partial = ingredientRepository.findByNameContaining(trimmed);
+        return partial.isEmpty() ? Optional.empty() : Optional.of(partial.get(0));
+    }
+
     /** 식재료를 삭제한다. 이미 어떤 냉장고에 등록되어 있는 식재료는 삭제할 수 없다. */
     @Transactional
     public void deleteIngredient(Long ingredientId) {
