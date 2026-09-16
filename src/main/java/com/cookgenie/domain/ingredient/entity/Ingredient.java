@@ -60,4 +60,16 @@ public class Ingredient extends BaseTimeEntity {
         this.category = category;
         this.defaultUnit = defaultUnit;
     }
+
+    /** 사용자가 영양정보를 직접 입력/수정했을 때 호출한다. */
+    public void markNutritionVerified() {
+        this.dataSource = DataSource.USER_INPUT;
+        this.isVerified = true;
+    }
+
+    /** Claude 추정으로 영양정보를 (다시) 채웠을 때 호출한다. */
+    public void markNutritionEstimated() {
+        this.dataSource = DataSource.LLM_ESTIMATED;
+        this.isVerified = false;
+    }
 }

@@ -6,6 +6,7 @@ import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
 import com.cookgenie.domain.ingredient.dto.IngredientResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
+import com.cookgenie.domain.ingredient.dto.NutritionUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -60,11 +61,15 @@ public class IngredientController {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.getSuggestions(categoryId)));
     }
 
-    /** POST /ingredients - 목록에 없는 새 식재료 등록 (같은 이름이 있으면 재사용, 없으면 Claude로 영양정보 추정) */
+    /** POST /ingredients - 목록에 없는 새 식재료 등록 (같은 이름이 있으면 재사용) */
     @Operation(
             summary = "식재료 등록",
-            description = "검색 결과에 없는 식재료를 등록합니다. 같은 이름의 식재료가 이미 있으면 그대로 재사용하고, "
-                    + "완전히 새 이름이면 Claude가 100g 기준 평균 영양정보를 추정해서 함께 저장합니다."
+            description = "검색 결과에 없는 식재료를 등록합니다. 같은 이름의 식재료가 이미 있으면 그대로 재사용합니다. "
+                    + "완전히 새 이름일 때: calories/carbohydrateG/proteinG/fatG를 직접 주면 그 값을 그대로 저장하고, "
+                    + "안 주고 autoEstimateNutrition=true면 Claude가 100g 기준 영양정보를 추정해서 저장합니다. "
+                    + "둘 다 안 하면(기본값) 영양정보 없이 등록되며, 나중에 PUT .../nutrition(직접 입력) 또는 "
+                    + "POST .../nutrition/estimate(AI 추정)로 채울 수 있습니다. "
+                    + "(여러 재료를 한 번에 등록할 때 매번 Claude를 호출하면 토큰이 많이 들어서 기본은 호출하지 않습니다.)"
     )
     @PostMapping
     public ResponseEntity<GlobalResponse<IngredientResponse>> createIngredient(
@@ -79,6 +84,32 @@ public class IngredientController {
             @Parameter(description = "식재료 ID") @PathVariable Long id,
             @Valid @RequestBody IngredientUpdateRequest request) {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.updateIngredient(id, request)));
+    }
+
+    /** PUT /ingredients/{id}/nutrition - 영양정보 직접 입력/수정 */
+    @Operation(
+            summary = "영양정보 직접 입력/수정",
+            description = "식재료의 100g(또는 ml) 기준 영양정보를 사용자가 직접 입력하거나 수정합니다. "
+                    + "영양정보가 없는 재료에 처음 채워 넣을 때, 또는 AI 추정값이 부정확할 때 사용합니다. "
+                    + "저장 후 dataSource는 USER_INPUT, isVerified는 true가 됩니다."
+    )
+    @PutMapping("/{id}/nutrition")
+    public ResponseEntity<GlobalResponse<IngredientResponse>> updateNutrition(
+            @Parameter(description = "식재료 ID") @PathVariable Long id,
+            @RequestBody NutritionUpdateRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.updateNutrition(id, request)));
+    }
+
+    /** POST /ingredients/{id}/nutrition/estimate - Claude로 영양정보 추정(나중에 채우기) */
+    @Operation(
+            summary = "영양정보 AI 추정",
+            description = "등록 시점에 영양정보를 채우지 않은 식재료(또는 다시 추정받고 싶은 식재료)에 대해 "
+                    + "그 시점에 Claude로 100g 기준 영양정보 추정을 요청합니다. 저장 후 dataSource는 LLM_ESTIMATED가 됩니다."
+    )
+    @PostMapping("/{id}/nutrition/estimate")
+    public ResponseEntity<GlobalResponse<IngredientResponse>> estimateNutrition(
+            @Parameter(description = "식재료 ID") @PathVariable Long id) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.estimateNutrition(id)));
     }
 
     /** DELETE /ingredients/{id} - 식재료 삭제 (냉장고에 등록되어 있으면 삭제 불가) */

@@ -8,6 +8,7 @@ import com.cookgenie.domain.ingredient.dto.IngredientCreateRequest;
 import com.cookgenie.domain.ingredient.dto.IngredientResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
+import com.cookgenie.domain.ingredient.dto.NutritionUpdateRequest;
 import com.cookgenie.domain.ingredient.entity.Category;
 import com.cookgenie.domain.ingredient.entity.DataSource;
 import com.cookgenie.domain.ingredient.entity.Ingredient;
@@ -78,8 +79,11 @@ public class IngredientService {
     /**
      * 목록에 없는 식재료를 등록한다.
      * 같은 이름의 식재료가 이미 있으면 새로 만들지 않고 그대로 재사용한다(중복 방지, 이미 있는 영양정보 재사용).
-     * 완전히 새 이름이면 Claude에게 100g 기준 평균 영양정보를 추정시켜 함께 저장한다(dataSource=LLM_ESTIMATED,
-     * isVerified=false). 추정에 실패하면 영양정보 없이 등록한다(dataSource=USER_INPUT).
+     * 완전히 새 이름이면 세 가지 경우로 나뉜다: (1) calories 등을 직접 줬으면 그 값을 그대로 저장(dataSource=USER_INPUT,
+     * isVerified=true), (2) 안 줬지만 autoEstimateNutrition=true면 Claude에게 추정을 요청(dataSource=LLM_ESTIMATED),
+     * (3) 둘 다 아니면 영양정보 없이 등록한다(dataSource=USER_INPUT, isVerified=false) — 매번 Claude를 호출하면
+     * 토큰이 많이 들어서(특히 영수증 인식처럼 한 번에 여러 재료를 등록할 때), 기본은 호출 안 하고 필요할 때
+     * PUT .../nutrition(직접 입력) 또는 POST .../nutrition/estimate(나중에 AI 추정)로 채우도록 함.
      */
     @Transactional
     public IngredientResponse createIngredient(IngredientCreateRequest request) {
@@ -93,20 +97,29 @@ public class IngredientService {
         }
 
         Category category = findOrCreateCategory(request.getCategoryName());
-        Optional<NutritionEstimate> estimate = claudeNutritionClient.estimate(name);
+        boolean hasManualNutrition = request.hasManualNutrition();
+        Optional<NutritionEstimate> estimate = (!hasManualNutrition && Boolean.TRUE.equals(request.getAutoEstimateNutrition()))
+                ? claudeNutritionClient.estimate(name)
+                : Optional.empty();
 
+        DataSource dataSource = estimate.isPresent() ? DataSource.LLM_ESTIMATED : DataSource.USER_INPUT;
         Ingredient ingredient = ingredientRepository.save(
                 Ingredient.builder()
                         .name(name)
                         .category(category)
                         .ingredientType(IngredientType.RAW)
-                        .defaultUnit(resolveDefaultUnit(request.getDefaultUnit(), estimate))
-                        .dataSource(estimate.isPresent() ? DataSource.LLM_ESTIMATED : DataSource.USER_INPUT)
-                        .isVerified(false)
+                        .defaultUnit(resolveDefaultUnit(request.getDefaultUnit(), request.getReferenceUnit(), estimate))
+                        .dataSource(dataSource)
+                        .isVerified(hasManualNutrition)
                         .build()
         );
 
-        NutritionInfo nutritionInfo = estimate.map(e -> saveNutritionInfo(ingredient, e)).orElse(null);
+        NutritionInfo nutritionInfo;
+        if (hasManualNutrition) {
+            nutritionInfo = saveManualNutritionInfo(ingredient, request);
+        } else {
+            nutritionInfo = estimate.map(e -> saveNutritionInfo(ingredient, e)).orElse(null);
+        }
 
         return new IngredientResponse(ingredient, nutritionInfo);
     }
@@ -119,6 +132,62 @@ public class IngredientService {
         Category category = findOrCreateCategory(request.getCategoryName());
         ingredient.update(request.getName(), category, request.getDefaultUnit());
         NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(ingredientId).orElse(null);
+        return new IngredientResponse(ingredient, nutritionInfo);
+    }
+
+    /**
+     * 식재료의 기준량당 영양정보를 사용자가 직접 입력/수정한다(dataSource=USER_INPUT, isVerified=true).
+     * 이미 있으면 덮어쓰고, 없으면 새로 만든다. AI 추정이 틀렸거나, 처음부터 안 채운 재료에 나중에 채워 넣을 때 쓴다.
+     */
+    @Transactional
+    public IngredientResponse updateNutrition(Long ingredientId, NutritionUpdateRequest request) {
+        Ingredient ingredient = ingredientRepository.findById(ingredientId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.INGREDIENT_NOT_FOUND));
+        NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(ingredientId).orElse(null);
+        String referenceUnit = resolveManualReferenceUnit(request.getReferenceUnit(), nutritionInfo);
+
+        if (nutritionInfo == null) {
+            nutritionInfo = nutritionInfoRepository.save(
+                    NutritionInfo.builder()
+                            .ingredient(ingredient)
+                            .referenceAmount(100)
+                            .referenceUnit(referenceUnit)
+                            .calories(request.getCalories())
+                            .carbohydrateG(request.getCarbohydrateG())
+                            .proteinG(request.getProteinG())
+                            .fatG(request.getFatG())
+                            .build()
+            );
+        } else {
+            nutritionInfo.update(100, referenceUnit, request.getCalories(), request.getCarbohydrateG(),
+                    request.getProteinG(), request.getFatG(),
+                    nutritionInfo.getSugarG(), nutritionInfo.getSodiumMg(), nutritionInfo.getFiberG());
+        }
+        ingredient.markNutritionVerified();
+
+        return new IngredientResponse(ingredient, nutritionInfo);
+    }
+
+    /**
+     * 아직 영양정보가 없거나 다시 추정받고 싶은 식재료에 대해, 그 시점에 Claude로 영양정보 추정을 요청한다
+     * (dataSource=LLM_ESTIMATED). 등록 시점에 자동으로 추정하지 않은 식재료를 나중에 채워 넣을 때 쓴다.
+     */
+    @Transactional
+    public IngredientResponse estimateNutrition(Long ingredientId) {
+        Ingredient ingredient = ingredientRepository.findById(ingredientId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.INGREDIENT_NOT_FOUND));
+        NutritionEstimate estimate = claudeNutritionClient.estimate(ingredient.getName())
+                .orElseThrow(() -> new CustomException(ErrorMessage.NUTRITION_ESTIMATION_FAILED));
+
+        NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(ingredientId).orElse(null);
+        if (nutritionInfo == null) {
+            nutritionInfo = saveNutritionInfo(ingredient, estimate);
+        } else {
+            nutritionInfo.update(100, estimate.referenceUnit(), estimate.calories(), estimate.carbohydrateG(),
+                    estimate.proteinG(), estimate.fatG(), estimate.sugarG(), estimate.sodiumMg(), estimate.fiberG());
+        }
+        ingredient.markNutritionEstimated();
+
         return new IngredientResponse(ingredient, nutritionInfo);
     }
 
@@ -164,11 +233,37 @@ public class IngredientService {
         return nutritionInfoRepository.save(nutritionInfo);
     }
 
-    private String resolveDefaultUnit(String requestedUnit, Optional<NutritionEstimate> estimate) {
+    private NutritionInfo saveManualNutritionInfo(Ingredient ingredient, IngredientCreateRequest request) {
+        NutritionInfo nutritionInfo = NutritionInfo.builder()
+                .ingredient(ingredient)
+                .referenceAmount(100)
+                .referenceUnit(request.getReferenceUnit() != null && !request.getReferenceUnit().isBlank()
+                        ? request.getReferenceUnit()
+                        : "g")
+                .calories(request.getCalories())
+                .carbohydrateG(request.getCarbohydrateG())
+                .proteinG(request.getProteinG())
+                .fatG(request.getFatG())
+                .build();
+        return nutritionInfoRepository.save(nutritionInfo);
+    }
+
+    /** defaultUnit 우선순위: 명시적으로 준 값 > 수동 입력 영양정보의 기준 단위 > Claude 추정 기준 단위. */
+    private String resolveDefaultUnit(String requestedUnit, String manualReferenceUnit, Optional<NutritionEstimate> estimate) {
         if (requestedUnit != null && !requestedUnit.isBlank()) {
             return requestedUnit;
         }
+        if (manualReferenceUnit != null && !manualReferenceUnit.isBlank()) {
+            return manualReferenceUnit;
+        }
         return estimate.map(NutritionEstimate::referenceUnit).orElse(null);
+    }
+
+    private String resolveManualReferenceUnit(String requestedUnit, NutritionInfo existing) {
+        if (requestedUnit != null && !requestedUnit.isBlank()) {
+            return requestedUnit;
+        }
+        return existing != null && existing.getReferenceUnit() != null ? existing.getReferenceUnit() : "g";
     }
 
     private Category findOrCreateCategory(String categoryName) {

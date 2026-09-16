@@ -19,6 +19,7 @@ public enum ErrorMessage {
     INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "식재료를 찾을 수 없습니다."),
     CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "카테고리를 찾을 수 없습니다."),
     INGREDIENT_IN_USE(HttpStatus.CONFLICT, "냉장고에 등록되어 있는 식재료는 삭제할 수 없습니다."),
+    NUTRITION_ESTIMATION_FAILED(HttpStatus.BAD_GATEWAY, "영양정보 추정에 실패했습니다. 잠시 후 다시 시도해주세요."),
     RECIPE_NOT_FOUND(HttpStatus.NOT_FOUND, "레시피를 찾을 수 없습니다."),
 
     INVALID_INVITE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않거나 만료된 초대코드입니다."),
