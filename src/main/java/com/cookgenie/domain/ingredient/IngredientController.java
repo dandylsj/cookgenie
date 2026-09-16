@@ -131,6 +131,20 @@ public class IngredientController {
         return ResponseEntity.ok(GlobalResponse.success(officialNutritionSyncService.syncFromCsv()));
     }
 
+    /** POST /ingredients/sync-official-processed-foods - 공공데이터포털 가공식품 CSV 동기화 */
+    @Operation(
+            summary = "식약처 공식 가공식품 영양정보 동기화",
+            description = "공공데이터포털 가공식품 표준데이터(브랜드별 개별 상품 31만여 건을 대표식품코드 "
+                    + "기준으로 미리 압축한 270여 건, 앱에 번들된 CSV)를 아직 등록되지 않은 이름만 새 식재료로 "
+                    + "등록합니다(dataSource=OFFICIAL_DB, ingredientType=PROCESSED). 마요네즈/간장/식용유 같은 "
+                    + "조미료·가공품이 대상이며, 원재료성식품 동기화와 완전히 별개로 동작합니다. "
+                    + "이미 있는 재료는 덮어쓰지 않고 건너뜁니다."
+    )
+    @PostMapping("/sync-official-processed-foods")
+    public ResponseEntity<GlobalResponse<OfficialNutritionSyncService.SyncResult>> syncOfficialProcessedFoods() {
+        return ResponseEntity.ok(GlobalResponse.success(officialNutritionSyncService.syncProcessedFoodsFromCsv()));
+    }
+
     /** DELETE /ingredients/{id} - 식재료 삭제 (냉장고에 등록되어 있으면 삭제 불가) */
     @Operation(summary = "식재료 삭제", description = "식재료를 삭제합니다. 이미 어떤 냉장고에 등록되어 있으면 삭제할 수 없습니다.")
     @DeleteMapping("/{id}")
