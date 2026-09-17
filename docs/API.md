@@ -546,6 +546,35 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 **Response** `200 OK` — `GlobalResponse<SyncTriggerResult>` (`started`: Boolean, `previousCount`: Long, `message`: String)
 
+### 4.9 음식(배달/외식 메뉴) 공공데이터 검색 — `GET /ingredients/dish-search?keyword=&limit=`
+
+식약처 "전국통합식품영양성분정보(음식)" 공공데이터에서 `keyword`(부분 일치)로 후보를 검색합니다. 4.7(가공식품)과 완전히 같은 구조지만, 이 데이터셋은 짜장면/김치찌개처럼 **조리된 메뉴** 기준이라 배달/외식 음식을 등록할 때 씁니다. `foodNm`에 브랜드명이 없는 경우가 많아서 `restNm`(제공 업체명)도 같이 내려줍니다.
+
+> **주의**: 4.7과 마찬가지로 정부 API 자체는 `foodNm` 완전 일치만 지원해서 부분검색이 안 됩니다. 4.10의 동기화로 미리 로컬 테이블(`official_dishes`)에 복사해둔 데이터에서 LIKE 검색을 합니다 — 동기화 전에는 항상 빈 목록만 나옵니다.
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| keyword | O | 검색어(부분 일치) |
+| limit | X (기본 20) | 최대 개수 |
+
+**Response** `200 OK` — `GlobalResponse<List<OfficialDishCandidateResponse>>` (`foodCd`, `foodNm`, `restNm`, `referenceUnit`, `calories`, `carbohydrateG`, `proteinG`, `fatG`, `sugarG`, `sodiumMg`, `fiberG` — 전부 100g/100ml 기준으로 정규화된 값)
+
+사용자가 후보 하나를 고르면, 그 값들을 그대로 4.4(등록)의 직접 입력값으로 넘겨서 등록하면 됩니다.
+
+### 4.10 음식 공공데이터 전체 동기화 — `POST /ingredients/dishes/sync?force=`
+
+식약처 음식 공공데이터 API 전체를 `foodNm` 필터 없이 페이지 단위로 전부 가져와 로컬 테이블 `official_dishes`에 복사합니다. 4.9의 부분검색이 실제로 동작하려면 이 동기화를 최초 한 번 실행해야 합니다. 4.8(가공식품 동기화)과 완전히 같은 방식으로 동작합니다.
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| force | X (기본 false) | 이미 데이터가 있어도 전체를 다시 훑어서 누락된 항목을 추가로 채울지 여부(기존 데이터는 지우지 않음) |
+
+- 이미 데이터가 있고 `force=false`면 아무것도 하지 않고 현재 건수만 응답에 담아 반환합니다(`started=false`).
+- 백그라운드(`@Async`)로 실행되며 응답은 시작 여부만 즉시 반환합니다 — 데이터 건수에 따라 몇 분 정도 걸릴 수 있습니다.
+- 중복 판단은 `(foodCd, foodNm, restNm)` 조합으로 합니다(가공식품에서 `foodCd` 단독 판단이 실제로는 다른 상품을 중복으로 오인하는 버그로 이어졌던 사례가 있어서, 이번엔 처음부터 조합 키로 설계함).
+
+**Response** `200 OK` — `GlobalResponse<SyncTriggerResult>` (`started`: Boolean, `previousCount`: Long, `message`: String)
+
 ### 공통 DTO
 
 **`IngredientResponse`**

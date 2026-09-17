@@ -9,19 +9,23 @@ import com.cookgenie.domain.ingredient.dto.IngredientResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import com.cookgenie.domain.ingredient.dto.NutritionUpdateRequest;
+import com.cookgenie.domain.ingredient.dto.OfficialDishCandidateResponse;
 import com.cookgenie.domain.ingredient.dto.OfficialFoodCandidateResponse;
 import com.cookgenie.domain.ingredient.entity.Category;
 import com.cookgenie.domain.ingredient.entity.DataSource;
 import com.cookgenie.domain.ingredient.entity.Ingredient;
 import com.cookgenie.domain.ingredient.entity.IngredientType;
 import com.cookgenie.domain.ingredient.entity.NutritionInfo;
+import com.cookgenie.domain.ingredient.entity.OfficialDish;
 import com.cookgenie.domain.ingredient.entity.OfficialProcessedFood;
 import com.cookgenie.domain.ingredient.external.ClaudeNutritionClient;
+import com.cookgenie.domain.ingredient.external.MfdsDishClient;
 import com.cookgenie.domain.ingredient.external.MfdsProcessedFoodClient;
 import com.cookgenie.domain.ingredient.external.NutritionEstimate;
 import com.cookgenie.domain.ingredient.repository.CategoryRepository;
 import com.cookgenie.domain.ingredient.repository.IngredientRepository;
 import com.cookgenie.domain.ingredient.repository.NutritionInfoRepository;
+import com.cookgenie.domain.ingredient.repository.OfficialDishRepository;
 import com.cookgenie.domain.ingredient.repository.OfficialProcessedFoodRepository;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +50,8 @@ public class IngredientService {
     private final ClaudeNutritionClient claudeNutritionClient;
     private final MfdsProcessedFoodClient mfdsProcessedFoodClient;
     private final OfficialProcessedFoodRepository officialProcessedFoodRepository;
+    private final MfdsDishClient mfdsDishClient;
+    private final OfficialDishRepository officialDishRepository;
 
     /**
      * 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다.
@@ -96,6 +102,25 @@ public class IngredientService {
                 .toList();
     }
 
+    /**
+     * 식약처 "음식" 공공데이터에서 이름(부분 일치)으로 후보를 검색한다. 짜장면/김치찌개처럼 조리된 메뉴
+     * 기준 데이터라 배달/외식 음식을 식단 기록(직접 입력)에 등록할 때 쓰기 좋다. foodNm에는 브랜드명이
+     * 없는 경우가 많아서 restNm(제공 업체명)도 같이 내려준다.
+     *
+     * <p>{@link #searchOfficialFoods}(가공식품)와 마찬가지로 정부 API 자체는 부분검색이 안 되므로,
+     * {@link OfficialDishSyncService}가 미리 복사해둔 로컬 테이블에서 LIKE 검색을 한다 - 동기화 전이면
+     * 빈 목록이 나온다(에러 아님, POST .../dishes/sync로 채우면 됨).
+     */
+    @Transactional(readOnly = true)
+    public List<OfficialDishCandidateResponse> searchDishes(String keyword, Integer limit) {
+        int size = limit != null && limit > 0 ? limit : 20;
+        return officialDishRepository
+                .findByFoodNmContainingOrRestNmContaining(keyword, keyword, PageRequest.of(0, size))
+                .stream()
+                .map(OfficialDishCandidateResponse::new)
+                .toList();
+    }
+
     /** 식재료 카테고리 전체 목록 조회. */
     @Transactional(readOnly = true)
     public List<CategoryResponse> getCategories() {
@@ -119,9 +144,9 @@ public class IngredientService {
      * 목록에 없는 식재료를 등록한다.
      * 같은 이름의 식재료가 이미 있으면 새로 만들지 않고 그대로 재사용한다(중복 방지, 이미 있는 영양정보 재사용).
      * 완전히 새 이름이면 세 가지 경우로 나뉜다: (1) calories 등을 직접 줬으면 그 값을 그대로 저장(dataSource=USER_INPUT,
-     * isVerified=true), (2) 안 줬지만 autoEstimateNutrition=true면 먼저 식약처 가공식품 공공데이터(이름 검색)를
-     * 시도하고 매칭되면 그 값을 그대로 저장(dataSource=OFFICIAL_DB, isVerified=true) — 브랜드/상품명이 있는
-     * 가공식품은 정부 실측값이 AI 추정보다 정확함. 못 찾으면 Claude에게 추정을 요청(dataSource=LLM_ESTIMATED),
+     * isVerified=true), (2) 안 줬지만 autoEstimateNutrition=true면 먼저 식약처 공식 데이터(가공식품 → 음식 순으로
+     * 이름 검색)를 시도하고 매칭되면 그 값을 그대로 저장(dataSource=OFFICIAL_DB, isVerified=true) — 정부 실측값이
+     * AI 추정보다 정확함. 못 찾으면 Claude에게 추정을 요청(dataSource=LLM_ESTIMATED),
      * (3) 둘 다 아니면 영양정보 없이 등록한다(dataSource=USER_INPUT, isVerified=false) — 매번 Claude를 호출하면
      * 토큰이 많이 들어서(특히 영수증 인식처럼 한 번에 여러 재료를 등록할 때), 기본은 호출 안 하고 필요할 때
      * PUT .../nutrition(직접 입력) 또는 POST .../nutrition/estimate(나중에 AI 추정)로 채우도록 함.
@@ -265,19 +290,34 @@ public class IngredientService {
     }
 
     /**
-     * 이름으로 정확히 일치하는 공식 가공식품 데이터를 찾는다. 먼저 로컬 미러 테이블(빠름, 오프라인)을 보고,
-     * 없으면(동기화 전이거나 그 테이블에 없는 이름) 정부 API 완전 일치 검색으로 한 번 더 시도한다 - 사용자가
-     * 방금 입력한 이름이 로컬 테이블에 아직 없어도 정부 API에는 있을 수 있으므로 보완적으로 둔다.
+     * 이름으로 정확히 일치하는 공식 데이터를 찾는다. 가공식품(포장 제품)과 음식(조리된 메뉴) 두 데이터셋을
+     * 순서대로 시도하고, 각각 먼저 로컬 미러 테이블(빠름, 오프라인)을 본 뒤 없으면(동기화 전이거나 그
+     * 테이블에 없는 이름) 정부 API 완전 일치 검색으로 한 번 더 보완한다.
      */
     private Optional<NutritionEstimate> lookupOfficialEstimate(String name) {
-        Optional<NutritionEstimate> local = officialProcessedFoodRepository.findFirstByFoodNm(name)
+        Optional<NutritionEstimate> processedFood = officialProcessedFoodRepository.findFirstByFoodNm(name)
                 .map(this::toEstimate);
-        return local.isPresent() ? local : mfdsProcessedFoodClient.search(name);
+        if (processedFood.isPresent()) {
+            return processedFood;
+        }
+        processedFood = mfdsProcessedFoodClient.search(name);
+        if (processedFood.isPresent()) {
+            return processedFood;
+        }
+
+        Optional<NutritionEstimate> dish = officialDishRepository.findFirstByFoodNm(name)
+                .map(this::toEstimate);
+        return dish.isPresent() ? dish : mfdsDishClient.search(name);
     }
 
     private NutritionEstimate toEstimate(OfficialProcessedFood food) {
         return new NutritionEstimate(true, food.getReferenceUnit(), food.getCalories(), food.getCarbohydrateG(),
                 food.getProteinG(), food.getFatG(), food.getSugarG(), food.getSodiumMg(), food.getFiberG());
+    }
+
+    private NutritionEstimate toEstimate(OfficialDish dish) {
+        return new NutritionEstimate(true, dish.getReferenceUnit(), dish.getCalories(), dish.getCarbohydrateG(),
+                dish.getProteinG(), dish.getFatG(), dish.getSugarG(), dish.getSodiumMg(), dish.getFiberG());
     }
 
     private NutritionInfo saveNutritionInfo(Ingredient ingredient, NutritionEstimate estimate) {

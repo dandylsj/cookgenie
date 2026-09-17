@@ -7,6 +7,7 @@ import com.cookgenie.domain.ingredient.dto.IngredientResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import com.cookgenie.domain.ingredient.dto.NutritionUpdateRequest;
+import com.cookgenie.domain.ingredient.dto.OfficialDishCandidateResponse;
 import com.cookgenie.domain.ingredient.dto.OfficialFoodCandidateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +36,7 @@ public class IngredientController {
     private final IngredientService ingredientService;
     private final OfficialNutritionSyncService officialNutritionSyncService;
     private final OfficialProcessedFoodSyncService officialProcessedFoodSyncService;
+    private final OfficialDishSyncService officialDishSyncService;
 
     /** GET /ingredients?keyword=&categoryId= - 이름/카테고리로 식재료 검색 (둘 다 없으면 전체 목록) */
     @Operation(
@@ -83,6 +85,22 @@ public class IngredientController {
             @Parameter(description = "검색 키워드") @RequestParam String keyword,
             @Parameter(description = "최대 개수 (기본 20)") @RequestParam(required = false) Integer limit) {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.searchOfficialFoods(keyword, limit)));
+    }
+
+    /** GET /ingredients/dish-search?keyword=&limit= - 식약처 음식(조리 메뉴) 공공데이터에서 이름으로 후보 검색 */
+    @Operation(
+            summary = "음식(배달/외식 메뉴) 공공데이터 검색",
+            description = "식약처 \"음식\" 공공데이터에서 keyword(부분 일치)로 후보를 검색합니다. 짜장면/김치찌개처럼 "
+                    + "조리된 메뉴 기준 데이터라 배달/외식 음식을 식단 기록에 등록할 때 씁니다. foodNm에 브랜드명이 "
+                    + "없는 경우가 많아서 restNm(제공 업체명)도 같이 내려주니 화면에 같이 보여주세요. 사용자가 후보 "
+                    + "하나를 고르면 그 값(calories/carbohydrateG/proteinG/fatG, 전부 100g/100ml 기준으로 정규화됨)을 "
+                    + "그대로 POST /ingredients에 직접 입력값으로 넘기면 됩니다."
+    )
+    @GetMapping("/dish-search")
+    public ResponseEntity<GlobalResponse<List<OfficialDishCandidateResponse>>> searchDishes(
+            @Parameter(description = "검색 키워드") @RequestParam String keyword,
+            @Parameter(description = "최대 개수 (기본 20)") @RequestParam(required = false) Integer limit) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.searchDishes(keyword, limit)));
     }
 
     /** POST /ingredients - 목록에 없는 새 식재료 등록 (같은 이름이 있으면 재사용) */
@@ -182,6 +200,27 @@ public class IngredientController {
         OfficialProcessedFoodSyncService.SyncTriggerResult result = officialProcessedFoodSyncService.prepareSync(force);
         if (result.started()) {
             officialProcessedFoodSyncService.runSync();
+        }
+        return ResponseEntity.ok(GlobalResponse.success(result));
+    }
+
+    /** POST /ingredients/dishes/sync - 음식 공공데이터 전체를 로컬 DB로 복사 */
+    @Operation(
+            summary = "음식 공공데이터 전체 동기화",
+            description = "식약처 \"음식\" 공공데이터 API 전체를 foodNm 필터 없이 페이지 단위로 전부 가져와 "
+                    + "로컬 테이블(official_dishes)에 복사합니다. GET /ingredients/dish-search가 이 테이블에서 "
+                    + "부분(포함) 검색을 하므로, 이 동기화가 끝나야 부분검색이 실제로 동작합니다(정부 API 자체는 "
+                    + "foodNm 완전 일치만 지원해서 부분검색이 안 됨). 이미 데이터가 있으면 아무것도 하지 않고 현재 "
+                    + "건수를 알려주며, force=true면 기존 데이터는 그대로 두고 전체를 다시 훑어 누락된 항목만 추가로 "
+                    + "저장합니다(중복 판단은 foodCd+foodNm+restNm 조합으로 함 - 이미 저장된 조합은 건드리지 않아 "
+                    + "재호출은 항상 안전합니다). 백그라운드로 실행되며 데이터 건수에 따라 몇 분 정도 걸릴 수 있습니다."
+    )
+    @PostMapping("/dishes/sync")
+    public ResponseEntity<GlobalResponse<OfficialDishSyncService.SyncTriggerResult>> syncOfficialDishMirror(
+            @Parameter(description = "이미 데이터가 있어도 전체를 다시 훑어서 누락된 항목을 추가로 채울지 여부") @RequestParam(required = false, defaultValue = "false") boolean force) {
+        OfficialDishSyncService.SyncTriggerResult result = officialDishSyncService.prepareSync(force);
+        if (result.started()) {
+            officialDishSyncService.runSync();
         }
         return ResponseEntity.ok(GlobalResponse.success(result));
     }

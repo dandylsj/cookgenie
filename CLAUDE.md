@@ -27,9 +27,10 @@ YOUTUBE_API_KEY: AIza...
 COUPANG_ACCESS_KEY: 쿠팡파트너스에서 발급받은 액세스 키
 COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 MFDS_PROCESSED_FOOD_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분정보(가공식품)" 서비스키(디코딩 키)
+MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분정보(음식)" 서비스키(디코딩 키) — 계정이 같으면 위 키와 같은 값일 수 있음
 ```
 
-이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
 
 `YOUTUBE_API_KEY`는 Google Cloud Console에서 **YouTube Data API v3**를 활성화하고 발급받은 API 키입니다(무료지만 일일 할당량 있음). 유튜브 레시피 검색/가져오기 기능에 쓰입니다.
 
@@ -37,9 +38,11 @@ MFDS_PROCESSED_FOOD_API_KEY: data.go.kr에서 발급받은 "전국통합식품�
 
 `MFDS_PROCESSED_FOOD_API_KEY`는 공공데이터포털(data.go.kr)에서 "전국통합식품영양성분정보(가공식품)표준데이터" 활용신청 후 받는 서비스키입니다. **디코딩(원본) 키**를 넣어야 함 — `MfdsProcessedFoodClient`가 직접 한 번만 URL 인코딩하므로 이미 인코딩된 키를 넣으면 이중 인코딩으로 인증 실패함. 값이 없거나 틀려도 앱은 정상 기동하고, 재료 등록 시 이 조회만 실패해서 기존처럼 Claude 추정으로 넘어갑니다(크래시 안 남) — 로컬에서 이 기능을 안 쓸 거면 아무 문자열이나 넣어둬도 됨.
 
+`MFDS_DISH_API_KEY`는 같은 data.go.kr 계정으로 "전국통합식품영양성분정보(음식)표준데이터"를 별도로 활용신청해서 받는 서비스키입니다(가공식품과 완전히 다른 API/데이터셋이라 활용신청 자체는 따로 필요 - 다만 data.go.kr 계정당 서비스키가 보통 하나라서 값 자체는 위 `MFDS_PROCESSED_FOOD_API_KEY`와 같을 수 있음). 마찬가지로 디코딩 키를 넣어야 하고, 없거나 틀려도 크래시 없이 해당 조회만 실패함.
+
 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USERNAME`은 로컬 기본값(`localhost`/`3306`/`cookgenie`/`root`)이 있어서 별도 설정 없이 그대로 씁니다. 로컬 MySQL은 `sql/create_database.sql`로 `cookgenie` DB만 만들면 테이블은 앱 기동 시 자동 생성됩니다.
 
-**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** (없어도 크래시는 안 나고 해당 조회만 안 됨).
+**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `MFDS_DISH_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** (없어도 크래시는 안 나고 해당 조회만 안 됨).
 
 ### 지나간 사고: application.yml이 통째로 배포에서 빠져있었던 문제
 
@@ -144,6 +147,11 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
      - **배포 후 실제 실행에서 발견된 문제(5-3차 수정)**: 첫 실행에서 `Duplicate entry` 예외로 pageNo=4에서 죽는 버그가 있어서 위처럼 페이지 간 중복을 걸러내도록 고쳤는데(이 항목 참고), 그 고침을 배포하고 다시 돌려보니 이번엔 죽지는 않고 591페이지를 끝까지 다 돌긴 했지만 **59만 건 중 245,668건만 저장됨**. `force=true`(당시엔 "지우고 재시작"이 아니라 "누락분만 추가로 채우기"로 이미 바꿔둔 상태)로 다시 돌려봤더니 591페이지를 또 끝까지 돌았는데 **이번엔 새로 저장된 게 0건**이었음 — 이 결과가 중요한 단서였음. 페이지네이션이 매번 다른 부분집합을 보여주는 "불안정한" 것이었다면 재실행 때 최소 몇 건은 새로 나왔어야 하는데 정확히 0건이라는 건, 오히려 **같은 페이지를 다시 호출하면 항상 같은 데이터가 나온다(안정적)**는 뜻이었음.
    - **5-4차 수정 (진짜 원인) — foodCd는 상품별 고유 코드가 아니다**: 다시 살펴보니 이미 이 저장소에 있던 다른 동기화 코드(`OfficialNutritionSyncService`, CSV 기반의 별개 기능)의 주석에 "표준데이터를 **대표식품코드 기준으로 묶어서**" 처리한다고 명시돼 있었음 - 즉 이 코드체계 자체가 원래 1:1이 아니라 여러 제조사/상품이 하나의 대표코드를 공유하는 구조. `foodCd` 하나만으로 유니크 제약을 걸었더니, 서로 다른 제조사/상품인데 같은 `foodCd`를 가진 항목들이 전부 "이미 있음"으로 걸러져 버린 것이 진짜 원인이었음(590,542행 → 245,668건으로 줄고, 재실행해도 0건만 나온 게 전부 이걸로 설명됨). `OfficialProcessedFood`의 유니크 제약을 `food_cd` 단독에서 `(food_cd, food_nm, mfr_nm)` 조합으로 바꾸고, `OfficialProcessedFoodSyncService.saveBatch()`의 중복 판단도 같은 조합 키로 바꿈.
      - **배포 시 주의**: 서버 DB에 이미 옛 스키마(`food_cd` 단독 유니크 인덱스)로 245,668건이 저장되어 있어서, `ddl-auto: update`가 옛 유니크 인덱스를 알아서 지워주지 않을 수 있음. 배포 후 `ALTER TABLE official_processed_foods DROP INDEX idx_official_processed_food_code;`를 한 번 실행해서 옛 인덱스를 지워야 새 조합 유니크 제약이 정상적으로 추가되고, 그래야 `POST /ingredients/official-foods/sync?force=true`를 다시 돌렸을 때 누락된(다른 제조사의 같은 대표코드) 상품들이 채워짐.
+6. **6차 — "음식"(배달/외식 메뉴) 공공데이터 추가**: 가공식품 데이터는 포장 제품 위주라 "짜장면", "치킨 1인분"처럼 배달/외식으로 먹는 조리된 메뉴의 칼로리·탄단지 정보에는 안 맞음. 식약처가 별도로 제공하는 **"전국통합식품영양성분정보(음식)표준데이터"**(`tn_pubr_public_nutri_food_info_api`, 국민건강영양조사 음식별 식품재료량 자료집 기반)를 5-2~5-4차와 완전히 같은 구조로 한 벌 더 만듦 - `MfdsDishClient`/`OfficialDish`(테이블 `official_dishes`)/`OfficialDishRepository`/`OfficialDishSyncService`, `GET /ingredients/dish-search`, `POST /ingredients/dishes/sync?force=`. 가공식품과 헷갈리지 않게 코드 전체에서 "Dish"로 이름을 분리함.
+   - 이 API는 요청변수 목록에 `foodCd`(식품코드)와 `foodLv4Cd`/`foodLv4Nm`(대표식품코드/대표식품명)이 **별개 필드로 분리**되어 있어서, 가공식품에서처럼 `foodCd`가 대표코드를 겸하는 구조는 아닐 가능성이 높음 - 그래도 가공식품에서 그 가정이 틀렸던 적이 있어서, 처음부터 안전하게 `OfficialDish`의 유니크 제약을 `food_cd` 단독이 아니라 `(food_cd, food_nm, rest_nm)` 조합으로 걸고 `saveBatch()`도 같은 조합 키로 중복을 판단하게 만듦(이번엔 재발 방지를 처음부터 반영, 배포 후 실측으로 재확인 필요).
+   - 영양성분 필드명(`enerc`/`chocdf`/`prot`/`fatce`/`sugar`/`nat`/`fibtg`/`nutConSrtrQua`)은 가공식품 API와 완전히 동일해서 `MfdsProcessedFoodClient`의 파싱/정규화 로직을 그대로 복사해서 재사용함. 브랜드명 역할을 하는 필드만 가공식품은 `mfrNm`(제조사)이고 음식은 `restNm`(제공 업체명)으로 다름 - 개념이 달라서 `OfficialFoodCandidate`(가공식품)와 별도로 `OfficialDishCandidate`(음식)를 만듦.
+   - `IngredientService.createIngredient()`의 `lookupOfficialEstimate()`가 이제 가공식품 → 음식 순으로 로컬 미러 + 정부 API 완전일치를 체인으로 시도함(하나라도 매칭되면 그 값을 씀, `ingredientType`은 둘 다 편의상 `PROCESSED`로 분류 - RAW/PROCESSED 두 값뿐이라 "조리된 음식"에 더 가까운 쪽을 씀).
+   - `MFDS_DISH_API_KEY` 환경변수 필요(환경설정 섹션 참고, 같은 data.go.kr 계정이면 가공식품 키와 같은 값일 수 있음). **배포 후 `POST /ingredients/dishes/sync`를 한 번 호출해야** `GET /ingredients/dish-search` 부분검색이 실제로 동작함.
 
 ## 게스트 로그인 (회원가입 없이 바로 시작)
 
