@@ -34,6 +34,7 @@ public class IngredientController {
 
     private final IngredientService ingredientService;
     private final OfficialNutritionSyncService officialNutritionSyncService;
+    private final OfficialProcessedFoodSyncService officialProcessedFoodSyncService;
 
     /** GET /ingredients?keyword=&categoryId= - 이름/카테고리로 식재료 검색 (둘 다 없으면 전체 목록) */
     @Operation(
@@ -160,6 +161,26 @@ public class IngredientController {
     @PostMapping("/sync-official-processed-foods")
     public ResponseEntity<GlobalResponse<OfficialNutritionSyncService.SyncResult>> syncOfficialProcessedFoods() {
         return ResponseEntity.ok(GlobalResponse.success(officialNutritionSyncService.syncProcessedFoodsFromCsv()));
+    }
+
+    /** POST /ingredients/official-foods/sync - 가공식품 공공데이터 전체(약 59만 건)를 로컬 DB로 복사 */
+    @Operation(
+            summary = "가공식품 공공데이터 전체 동기화",
+            description = "식약처 가공식품 공공데이터 API 전체(약 59만 건)를 foodNm 필터 없이 페이지 단위로 전부 "
+                    + "가져와 로컬 테이블(official_processed_foods)에 복사합니다. GET /ingredients/official-search가 "
+                    + "이 테이블에서 부분(포함) 검색을 하므로, 이 동기화가 끝나야 삼성헬스 스타일로 몇 글자만 쳐도 "
+                    + "후보가 뜹니다(정부 API 자체는 foodNm 완전 일치만 지원해서 부분검색이 안 됨). "
+                    + "이미 데이터가 있으면 아무것도 하지 않고 현재 건수를 알려주며, force=true면 전부 지우고 다시 "
+                    + "받습니다. 백그라운드로 실행되며 몇 분 정도 걸릴 수 있습니다(순차적으로 약 591번 호출)."
+    )
+    @PostMapping("/official-foods/sync")
+    public ResponseEntity<GlobalResponse<OfficialProcessedFoodSyncService.SyncTriggerResult>> syncOfficialProcessedFoodMirror(
+            @Parameter(description = "이미 데이터가 있어도 전부 지우고 다시 받을지 여부") @RequestParam(required = false, defaultValue = "false") boolean force) {
+        OfficialProcessedFoodSyncService.SyncTriggerResult result = officialProcessedFoodSyncService.prepareSync(force);
+        if (result.started()) {
+            officialProcessedFoodSyncService.runSync();
+        }
+        return ResponseEntity.ok(GlobalResponse.success(result));
     }
 
     /** DELETE /ingredients/{id} - 식재료 삭제 (냉장고에 등록되어 있으면 삭제 불가) */

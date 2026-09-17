@@ -15,18 +15,21 @@ import com.cookgenie.domain.ingredient.entity.DataSource;
 import com.cookgenie.domain.ingredient.entity.Ingredient;
 import com.cookgenie.domain.ingredient.entity.IngredientType;
 import com.cookgenie.domain.ingredient.entity.NutritionInfo;
+import com.cookgenie.domain.ingredient.entity.OfficialProcessedFood;
 import com.cookgenie.domain.ingredient.external.ClaudeNutritionClient;
 import com.cookgenie.domain.ingredient.external.MfdsProcessedFoodClient;
 import com.cookgenie.domain.ingredient.external.NutritionEstimate;
 import com.cookgenie.domain.ingredient.repository.CategoryRepository;
 import com.cookgenie.domain.ingredient.repository.IngredientRepository;
 import com.cookgenie.domain.ingredient.repository.NutritionInfoRepository;
+import com.cookgenie.domain.ingredient.repository.OfficialProcessedFoodRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +45,7 @@ public class IngredientService {
     private final FridgeItemRepository fridgeItemRepository;
     private final ClaudeNutritionClient claudeNutritionClient;
     private final MfdsProcessedFoodClient mfdsProcessedFoodClient;
+    private final OfficialProcessedFoodRepository officialProcessedFoodRepository;
 
     /**
      * 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다.
@@ -77,11 +81,17 @@ public class IngredientService {
      * 식약처 가공식품 공공데이터에서 이름(부분 일치)으로 후보를 검색한다("실온"→"실온보관 닭가슴살"처럼
      * 좁혀가며 정확한 제품을 직접 고를 수 있게 하는 용도). foodNm에는 브랜드명이 안 들어있는 경우가 많아서
      * mfrNm(제조사)도 같이 내려준다 - 화면에서 같이 보여줘서 사용자가 정확한 걸 고르게 해야 함.
+     *
+     * <p>정부 API 자체는 foodNm이 완전 일치해야만 찾아져서(부분검색 불가, 실측으로 확인됨) 여기서는
+     * {@link OfficialProcessedFoodSyncService}가 미리 통째로 복사해둔 로컬 테이블에서 LIKE 검색을 한다 -
+     * 동기화 전이거나 아직 안 되어 있으면 그냥 빈 목록이 나온다(에러 아님, POST .../official-foods/sync로 채우면 됨).
      */
     @Transactional(readOnly = true)
     public List<OfficialFoodCandidateResponse> searchOfficialFoods(String keyword, Integer limit) {
         int size = limit != null && limit > 0 ? limit : 20;
-        return mfdsProcessedFoodClient.searchCandidates(keyword, size).stream()
+        return officialProcessedFoodRepository
+                .findByFoodNmContainingOrMfrNmContaining(keyword, keyword, PageRequest.of(0, size))
+                .stream()
                 .map(OfficialFoodCandidateResponse::new)
                 .toList();
     }
@@ -131,7 +141,7 @@ public class IngredientService {
         boolean hasManualNutrition = request.hasManualNutrition();
         boolean shouldEstimate = !hasManualNutrition && Boolean.TRUE.equals(request.getAutoEstimateNutrition());
         Optional<NutritionEstimate> officialEstimate = shouldEstimate
-                ? mfdsProcessedFoodClient.search(name)
+                ? lookupOfficialEstimate(name)
                 : Optional.empty();
         Optional<NutritionEstimate> estimate = officialEstimate.isPresent()
                 ? officialEstimate
@@ -252,6 +262,22 @@ public class IngredientService {
             throw new CustomException(ErrorMessage.INGREDIENT_IN_USE);
         }
         ingredientRepository.delete(ingredient);
+    }
+
+    /**
+     * 이름으로 정확히 일치하는 공식 가공식품 데이터를 찾는다. 먼저 로컬 미러 테이블(빠름, 오프라인)을 보고,
+     * 없으면(동기화 전이거나 그 테이블에 없는 이름) 정부 API 완전 일치 검색으로 한 번 더 시도한다 - 사용자가
+     * 방금 입력한 이름이 로컬 테이블에 아직 없어도 정부 API에는 있을 수 있으므로 보완적으로 둔다.
+     */
+    private Optional<NutritionEstimate> lookupOfficialEstimate(String name) {
+        Optional<NutritionEstimate> local = officialProcessedFoodRepository.findFirstByFoodNm(name)
+                .map(this::toEstimate);
+        return local.isPresent() ? local : mfdsProcessedFoodClient.search(name);
+    }
+
+    private NutritionEstimate toEstimate(OfficialProcessedFood food) {
+        return new NutritionEstimate(true, food.getReferenceUnit(), food.getCalories(), food.getCarbohydrateG(),
+                food.getProteinG(), food.getFatG(), food.getSugarG(), food.getSodiumMg(), food.getFiberG());
     }
 
     private NutritionInfo saveNutritionInfo(Ingredient ingredient, NutritionEstimate estimate) {
