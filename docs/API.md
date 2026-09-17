@@ -463,6 +463,19 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 **Response** `204 No Content` · **에러**: 식재료 없음(404), 이미 어떤 냉장고에 등록되어 삭제 불가(409)
 
+### 4.7 가공식품 공공데이터 검색 — `GET /ingredients/official-search?keyword=&limit=`
+
+식약처 "전국통합식품영양성분정보(가공식품)" 공공데이터에서 `keyword`(부분 일치)로 후보를 검색합니다. "실온"으로 검색해서 쭉 보다가 "닭"을 덧붙여 좁혀가는 식으로 씁니다. `foodNm`에 브랜드명이 안 들어있는 경우가 많아서(예: "요거트 아이스크림"이라는 같은 이름으로 제조사가 다른 상품이 여럿) `mfrNm`(제조사)도 같이 내려주니 화면에 같이 보여줘야 합니다.
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| keyword | O | 검색어(부분 일치) |
+| limit | X (기본 20) | 최대 개수 |
+
+**Response** `200 OK` — `GlobalResponse<List<OfficialFoodCandidateResponse>>` (`foodCd`, `foodNm`, `mfrNm`, `referenceUnit`, `calories`, `carbohydrateG`, `proteinG`, `fatG`, `sugarG`, `sodiumMg`, `fiberG` — 전부 100g/100ml 기준으로 정규화된 값)
+
+사용자가 후보 하나를 고르면, 그 값들을 그대로 4.4(등록)의 `calories`/`carbohydrateG`/`proteinG`/`fatG`(직접 입력값)로 넘겨서 등록하면 됩니다(추가 API/AI 호출 불필요, `dataSource=USER_INPUT`, `isVerified=true`로 저장됨).
+
 ### 공통 DTO
 
 **`IngredientResponse`**

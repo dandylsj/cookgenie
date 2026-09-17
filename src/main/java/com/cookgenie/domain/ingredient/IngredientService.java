@@ -9,6 +9,7 @@ import com.cookgenie.domain.ingredient.dto.IngredientResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import com.cookgenie.domain.ingredient.dto.NutritionUpdateRequest;
+import com.cookgenie.domain.ingredient.dto.OfficialFoodCandidateResponse;
 import com.cookgenie.domain.ingredient.entity.Category;
 import com.cookgenie.domain.ingredient.entity.DataSource;
 import com.cookgenie.domain.ingredient.entity.Ingredient;
@@ -69,6 +70,19 @@ public class IngredientService {
 
         return ingredients.stream()
                 .map(ingredient -> new IngredientResponse(ingredient, nutritionByIngredientId.get(ingredient.getId())))
+                .toList();
+    }
+
+    /**
+     * 식약처 가공식품 공공데이터에서 이름(부분 일치)으로 후보를 검색한다("실온"→"실온보관 닭가슴살"처럼
+     * 좁혀가며 정확한 제품을 직접 고를 수 있게 하는 용도). foodNm에는 브랜드명이 안 들어있는 경우가 많아서
+     * mfrNm(제조사)도 같이 내려준다 - 화면에서 같이 보여줘서 사용자가 정확한 걸 고르게 해야 함.
+     */
+    @Transactional(readOnly = true)
+    public List<OfficialFoodCandidateResponse> searchOfficialFoods(String keyword, Integer limit) {
+        int size = limit != null && limit > 0 ? limit : 20;
+        return mfdsProcessedFoodClient.searchCandidates(keyword, size).stream()
+                .map(OfficialFoodCandidateResponse::new)
                 .toList();
     }
 
