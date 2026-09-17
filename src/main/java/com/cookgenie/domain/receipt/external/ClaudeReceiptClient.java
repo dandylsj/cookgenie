@@ -36,6 +36,16 @@ public class ClaudeReceiptClient {
             + "절대로 비슷한 글자를 지어내지 말고, 분명하게 읽히는 부분까지만 적거나 그 항목을 제외해줘. "
             + "정확하지 않은 추측보다 누락이 낫다.";
 
+    /**
+     * name 필드에 중량/용량("무순, 60g")이 같이 섞여 들어오면 정부 공식 데이터 이름 매칭이 실패하고
+     * (공식 데이터의 foodNm은 순수 상품명이라 "60g" 같은 접미사가 안 붙음), 냉장고 등록 시 수량도 항상
+     * 기본값(1개)으로 저장되는 문제가 실측으로 확인돼서, 중량/용량은 반드시 quantityText/quantityValue/unit
+     * 필드로만 분리해서 넣도록 못박는다.
+     */
+    private static final String QUANTITY_SEPARATION_INSTRUCTION = " name에는 브랜드명+상품명만 넣고, "
+            + "중량/용량 표시(예: \"60g\", \"500g\", \"1kg\")는 절대로 name에 포함하지 말고 "
+            + "quantityText/quantityValue/unit 필드에만 넣어줘.";
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final String visionModel;
@@ -59,6 +69,7 @@ public class ClaudeReceiptClient {
                 + "식재료/음식으로 볼 수 있는 것만 골라 이름과 수량을 추출해줘. 영수증에 축약되거나 코드처럼 "
                 + "적힌 상품명(예: \"국산돈목심600\")은 사람이 알아보기 쉬운 일반적인 이름(예: \"돼지 목심\")으로 "
                 + "풀어서 써줘. 세제/휴지/생활용품처럼 식재료가 아닌 항목은 결과에서 제외해줘."
+                + QUANTITY_SEPARATION_INSTRUCTION
                 + ACCURACY_INSTRUCTION
                 + " record_receipt_items 도구를 호출해서 결과를 알려줘.";
         return call(prompt, mediaType, base64Image);
@@ -72,8 +83,9 @@ public class ClaudeReceiptClient {
     public Optional<ReceiptScanResult> scanOrderHistory(String mediaType, String base64Image) {
         String prompt = "이 이미지는 쿠팡/마켓컬리/네이버쇼핑 같은 온라인 쇼핑몰의 주문내역(구매내역) 화면을 "
                 + "캡처한 것이다. 화면에 나열된 상품 중 식재료/음식으로 볼 수 있는 것만 골라 이름과 수량을 "
-                + "추출해줘. 상품명에 용량/옵션이 같이 적혀 있으면(예: \"국산 돼지 목살 600g\") 그대로 이름에 "
-                + "포함해도 된다. 주방용품/생활용품처럼 식재료가 아닌 항목은 결과에서 제외해줘."
+                + "추출해줘. 상품명에 옵션(맛/부위 등)이 있으면 이름에 포함해도 되지만, 용량/중량은 이름에 "
+                + "넣지 말고 별도 필드로 분리해줘. 주방용품/생활용품처럼 식재료가 아닌 항목은 결과에서 제외해줘."
+                + QUANTITY_SEPARATION_INSTRUCTION
                 + ACCURACY_INSTRUCTION
                 + " record_receipt_items 도구를 호출해서 결과를 알려줘.";
         return call(prompt, mediaType, base64Image);
