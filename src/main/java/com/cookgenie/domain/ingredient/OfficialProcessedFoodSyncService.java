@@ -4,7 +4,10 @@ import com.cookgenie.domain.ingredient.entity.OfficialProcessedFood;
 import com.cookgenie.domain.ingredient.external.MfdsProcessedFoodClient;
 import com.cookgenie.domain.ingredient.external.OfficialFoodCandidate;
 import com.cookgenie.domain.ingredient.repository.OfficialProcessedFoodRepository;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -66,8 +69,7 @@ public class OfficialProcessedFoodSyncService {
                 return;
             }
             totalCount = page.totalCount();
-            saveBatch(page.items());
-            imported += page.items().size();
+            imported += saveBatch(page.items());
             log.info("[가공식품 전체 동기화] pageNo={} 완료, 누적 {}/{}건", pageNo, imported, totalCount);
             pageNo++;
         }
@@ -75,9 +77,25 @@ public class OfficialProcessedFoodSyncService {
         log.info("[가공식품 전체 동기화] 완료 - 총 {}건 저장", imported);
     }
 
-    private void saveBatch(List<OfficialFoodCandidate> items) {
-        List<OfficialProcessedFood> entities = items.stream().map(this::toEntity).toList();
-        officialProcessedFoodRepository.saveAll(entities);
+    /**
+     * 정부 API 페이지 사이에 같은 foodCd가 겹쳐서 나오는 경우가 실측으로 확인됨(페이지 경계가 안정적이지
+     * 않은 듯) - 겹치는 항목을 그대로 저장하려 하면 foodCd 유니크 제약 위반으로 배치 전체(트랜잭션)가
+     * 롤백되고 동기화가 멈춰버림. 그래서 저장 전에 (1) 같은 배치 안에서의 중복을 먼저 걸러내고,
+     * (2) 이미 DB에 있는 foodCd도 한 번의 조회로 걸러낸 뒤 새 항목만 저장한다.
+     */
+    private int saveBatch(List<OfficialFoodCandidate> items) {
+        Map<String, OfficialFoodCandidate> deduped = new LinkedHashMap<>();
+        items.forEach(item -> deduped.put(item.foodCd(), item));
+
+        Set<String> alreadySaved = Set.copyOf(officialProcessedFoodRepository.findExistingFoodCds(deduped.keySet()));
+        List<OfficialProcessedFood> entities = deduped.values().stream()
+                .filter(item -> !alreadySaved.contains(item.foodCd()))
+                .map(this::toEntity)
+                .toList();
+        if (!entities.isEmpty()) {
+            officialProcessedFoodRepository.saveAll(entities);
+        }
+        return entities.size();
     }
 
     private OfficialProcessedFood toEntity(OfficialFoodCandidate candidate) {
