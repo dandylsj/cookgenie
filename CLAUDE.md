@@ -203,7 +203,15 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - **실물 상품 사진**: 새 `domain/product/` 패키지 — `POST /fridges/{fridgeId}/products/scan`. 상품 포장/라벨 사진 한 장(또는 여러 상품이 함께 찍힌 사진)에서 브랜드명 포함 상품명(예: "오뚜기 진라면 매운맛")과 중량 표시를 읽어내는 프롬프트를 쓰는 새 클라이언트 `ClaudeProductClient`를 만듦 — 다만 추출 결과 타입은 `domain/receipt/external/ReceiptScanResult`를 그대로 재사용(이름/수량/카테고리라는 추출 스키마가 완전히 같아서 굳이 새 record를 안 만듦). `ProductService`는 인식된 이름 → 기존 재료/공식 데이터 매칭 로직을 `ReceiptService.toItemResponse()`(public으로 변경)를 그대로 호출해서 재사용함 - 입력 사진 종류만 다를 뿐 "이름으로 맞춰본다"는 로직 자체가 동일해서 도메인 경계를 넘어 재사용하는 걸 선택함(이 코드베이스에 이미 있던 `RecipeService`→`IngredientService.matchByName()` 위임과 같은 패턴).
 - **공식 데이터 자동 매칭 확장**: `IngredientService`에 `matchProcessedFoodByName(name)`/`matchDishByName(name)`(둘 다 로컬 미러 완전 일치)을 추가하고, `ReceiptItemResponse`에 `matchedProcessedFood`/`matchedDish` 필드를 새로 붙임. `ReceiptService.toItemResponse()`가 이제 (1) `Ingredient` 마스터 → (2) 가공식품 로컬 미러 → (3) 음식 로컬 미러 순서로 매칭을 시도하고(이미 (1)에서 매칭됐으면 (2)(3)은 조회하지 않음), 매칭되면 그 값을 그대로 프론트가 `POST /ingredients`의 직접 입력값으로 넘겨서 **AI 추정 호출 없이** 정확한 영양정보로 등록할 수 있게 함. 세 사진 인식 API(영수증/주문내역/실물 상품) 모두 이 매칭을 공통으로 탄다.
 - `ErrorMessage`에 범용 `IMAGE_REQUIRED`/`IMAGE_RECOGNITION_FAILED` 추가(주문내역/실물 상품 API용 — 기존 `RECEIPT_IMAGE_REQUIRED`/`RECEIPT_SCAN_FAILED`는 문구가 "영수증"에 특화돼 있어서 그대로 재사용하지 않음. `RECEIPT_IMAGE_TOO_LARGE`/`UNSUPPORTED_IMAGE_TYPE`은 문구가 이미 범용적이라 그대로 재사용).
-- 프론트(cookgenieWeb)는 아직 두 기능 모두 `handleDummyRecognition()`으로 "준비 중" 알럿만 뜨는 상태 — 다음 세션에서 `ReceiptScanModal`을 일반화하거나 sibling 컴포넌트를 만들어 연결해야 함.
+- 프론트(cookgenieWeb): `ReceiptScanModal`을 `mode`(`'receipt'`|`'orderHistory'`|`'product'`) prop으로 일반화해서 세 버튼을 모두 실제 스캔 모달로 연결함. `matchedProcessedFood`/`matchedDish`가 있는 항목은 리뷰 화면에 🏛️ 배지를 보여주고, 등록 시 그 영양정보를 AI 추정 없이 직접 입력값으로 그대로 씀.
+
+### 버그: 한글 인식률이 낮음(잘리거나 흐린 글자를 지어냄) — 비전 전용 모델 분리로 수정
+
+실제 사용해보니 "생연어"를 "생영어"로, 잘려서 안 보이는 뒷부분("횟감용 (냉장)")을 전혀 다른 글자("흰갈충 (냉")로 지어내는 등 한글 인식 오류가 눈에 띔. 원인은 비용 절감을 위해 앱 전체(영양정보 추정/레시피 생성/영수증·주문내역·실물 상품 인식)가 전부 `anthropic.model=claude-haiku-4-5-20251001` 하나만 쓰고 있었던 것 — Haiku는 작은 글씨의 정밀한 한글 OCR에는 약함.
+
+- `application.yml`에 `anthropic.vision-model: claude-sonnet-5`를 새로 추가하고, **비전을 쓰는 두 클라이언트(`ClaudeReceiptClient`, `ClaudeProductClient`)만** 이 모델로 바꿈 — 영양정보 추정/레시피 생성처럼 호출 빈도가 높고 정밀한 OCR이 필요 없는 나머지는 그대로 Haiku를 써서 비용 영향을 최소화함. 시크릿이 아니라 그냥 하드코딩된 설정값이라 배포 시 별도 환경변수 추가 불필요.
+- 세 인식 프롬프트(영수증/주문내역/실물 상품) 전부에 "글자가 작거나 흐리거나 잘려서 확실히 안 보이면 절대로 비슷한 글자를 지어내지 말고, 분명하게 읽히는 부분까지만 적거나 그 항목을 제외해달라"는 지시를 추가함 — 모델이 불확실한 글자를 그럴듯하게 복원해버리는(confabulation) 패턴을 직접 겨냥한 지시.
+- **아직 실제 재검증 못 함** — 다음에 같은 종류의 사진으로 다시 테스트해서 개선됐는지 확인 필요.
 
 ## 식단 기록(MealLog) API + 목표 영양정보(NutritionGoal) API
 

@@ -16,6 +16,9 @@ import tools.jackson.databind.ObjectMapper;
  * Claude(Anthropic Messages API, 비전)에게 실물 식품 상품(포장/라벨) 사진을 보내 상품명을 읽어 식재료 후보
  * 목록을 추출시키는 클라이언트. 추출 스키마가 영수증/주문내역 인식({@link ReceiptScanResult})과 완전히
  * 동일해서 그 타입을 그대로 재사용한다 - 입력 방식만 다를 뿐 "이름/수량/카테고리 후보를 뽑는다"는 목적이 같음.
+ *
+ * <p>{@link com.cookgenie.domain.receipt.external.ClaudeReceiptClient}와 같은 이유로 별도의
+ * {@code anthropic.vision-model}(Sonnet)을 쓴다 - 포장 글씨가 작아서 정밀한 글자 인식이 필요함.
  */
 @Slf4j
 @Component
@@ -26,18 +29,18 @@ public class ClaudeProductClient {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
-    private final String model;
+    private final String visionModel;
 
     public ClaudeProductClient(
             @Value("${anthropic.api-key}") String apiKey,
-            @Value("${anthropic.model}") String model,
+            @Value("${anthropic.vision-model}") String visionModel,
             ObjectMapper objectMapper) {
         this.restClient = RestClient.builder()
                 .baseUrl("https://api.anthropic.com/v1/messages")
                 .defaultHeader("x-api-key", apiKey)
                 .defaultHeader("anthropic-version", "2023-06-01")
                 .build();
-        this.model = model;
+        this.visionModel = visionModel;
         this.objectMapper = objectMapper;
     }
 
@@ -47,10 +50,12 @@ public class ClaudeProductClient {
                 + "상품명을 브랜드명과 함께 읽어서 알아볼 수 있는 이름으로 추출해줘(예: \"오뚜기 진라면 매운맛\"). "
                 + "포장에 중량/용량이 적혀 있으면 quantityText로 같이 알려줘. 한 사진에 여러 상품이 보이면 "
                 + "각각 별도 항목으로 추출해줘. 글자를 읽을 수 없거나 식품이 아닌 경우는 결과에서 제외해줘. "
+                + "글자가 작거나 흐리거나 잘려서 확실하게 읽을 수 없으면 절대로 비슷한 글자를 지어내지 말고, "
+                + "분명하게 읽히는 부분까지만 적거나 그 항목을 제외해줘. 정확하지 않은 추측보다 누락이 낫다. "
                 + "record_product_items 도구를 호출해서 결과를 알려줘.";
 
         ClaudeMessageRequest request = new ClaudeMessageRequest(
-                model,
+                visionModel,
                 MAX_TOKENS,
                 List.of(ClaudeMessageRequest.Message.withImage("user", prompt, mediaType, base64Image)),
                 List.of(productTool()),
