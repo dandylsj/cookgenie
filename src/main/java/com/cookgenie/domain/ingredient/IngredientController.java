@@ -170,12 +170,15 @@ public class IngredientController {
                     + "가져와 로컬 테이블(official_processed_foods)에 복사합니다. GET /ingredients/official-search가 "
                     + "이 테이블에서 부분(포함) 검색을 하므로, 이 동기화가 끝나야 삼성헬스 스타일로 몇 글자만 쳐도 "
                     + "후보가 뜹니다(정부 API 자체는 foodNm 완전 일치만 지원해서 부분검색이 안 됨). "
-                    + "이미 데이터가 있으면 아무것도 하지 않고 현재 건수를 알려주며, force=true면 전부 지우고 다시 "
-                    + "받습니다. 백그라운드로 실행되며 몇 분 정도 걸릴 수 있습니다(순차적으로 약 591번 호출)."
+                    + "이미 데이터가 있으면 아무것도 하지 않고 현재 건수를 알려주며, force=true면 기존 데이터는 "
+                    + "그대로 두고 전체를 다시 훑어 누락된 항목만 추가로 저장합니다(정부 API 페이지네이션이 "
+                    + "안정적이지 않아 한 번에 다 안 채워질 수 있어서, 다 채워질 때까지 여러 번 force=true로 "
+                    + "재호출하면 됩니다 - 이미 저장된 항목은 건드리지 않아 안전합니다). "
+                    + "백그라운드로 실행되며 몇 분 정도 걸릴 수 있습니다(순차적으로 약 591번 호출)."
     )
     @PostMapping("/official-foods/sync")
     public ResponseEntity<GlobalResponse<OfficialProcessedFoodSyncService.SyncTriggerResult>> syncOfficialProcessedFoodMirror(
-            @Parameter(description = "이미 데이터가 있어도 전부 지우고 다시 받을지 여부") @RequestParam(required = false, defaultValue = "false") boolean force) {
+            @Parameter(description = "이미 데이터가 있어도 전체를 다시 훑어서 누락된 항목을 추가로 채울지 여부") @RequestParam(required = false, defaultValue = "false") boolean force) {
         OfficialProcessedFoodSyncService.SyncTriggerResult result = officialProcessedFoodSyncService.prepareSync(force);
         if (result.started()) {
             officialProcessedFoodSyncService.runSync();

@@ -36,22 +36,27 @@ public class OfficialProcessedFoodSyncService {
     private final OfficialProcessedFoodRepository officialProcessedFoodRepository;
 
     /**
-     * 이미 데이터가 있으면(force=false) 시작하지 않는다. force=true면 기존 데이터를 전부 지우고 처음부터
-     * 다시 받을 준비를 한다(중복 방지 - foodCd 유니크 제약과 씨름하는 대신 통째로 비우고 재수집).
-     * 결과의 {@code started}가 true일 때만 컨트롤러가 {@link #runSync()}를 이어서 호출해야 한다.
+     * 이미 데이터가 있으면(force=false) 시작하지 않는다. force=true면 기존 데이터는 그대로 둔 채 전체를
+     * 다시 훑어서 누락된 항목만 추가로 저장한다(더 이상 지우지 않음 - {@link #saveBatch}가 이미 저장된
+     * foodCd를 안전하게 걸러내므로 재실행은 항상 멱등적이다).
+     *
+     * <p>정부 API의 오프셋 기반 페이지네이션이 591페이지처럼 깊게 들어가면 안정적이지 않아서(같은 foodCd가
+     * 여러 페이지에 걸쳐 반복돼서 나옴, 실측으로 확인됨) 한 번의 전체 훑기로 59만 건이 다 안 채워지고
+     * 일부만(예: 245,668건) 저장되는 경우가 있다 - 이때는 force=true로 다시 돌리면 지난번과 다른 부분을
+     * 우연히 더 보게 되어 누락분이 점점 채워진다. 결과의 {@code started}가 true일 때만 컨트롤러가
+     * {@link #runSync()}를 이어서 호출해야 한다.
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public SyncTriggerResult prepareSync(boolean force) {
         long existing = officialProcessedFoodRepository.count();
         if (existing > 0 && !force) {
             return new SyncTriggerResult(false, existing,
-                    "이미 " + existing + "건이 저장되어 있습니다. 다시 받으려면 force=true로 호출하세요.");
-        }
-        if (existing > 0) {
-            officialProcessedFoodRepository.deleteAllInBatch();
+                    "이미 " + existing + "건이 저장되어 있습니다. 누락된 항목을 추가로 채우려면 force=true로 호출하세요.");
         }
         return new SyncTriggerResult(true, existing,
-                "백그라운드로 전체 동기화를 시작했습니다. 약 59만 건이라 몇 분 정도 걸립니다.");
+                existing > 0
+                        ? "기존 " + existing + "건은 그대로 두고, 전체를 다시 훑어 누락된 항목만 추가로 저장합니다."
+                        : "백그라운드로 전체 동기화를 시작했습니다. 약 59만 건이라 몇 분 정도 걸립니다.");
     }
 
     /** 전체 페이지를 순차적으로 가져와 저장한다. 중간에 페이지 조회가 실패하면 그 지점에서 멈춘다(재시도 없음). */
