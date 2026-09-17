@@ -7,6 +7,7 @@ import com.cookgenie.domain.ingredient.dto.IngredientResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientSuggestionResponse;
 import com.cookgenie.domain.ingredient.dto.IngredientUpdateRequest;
 import com.cookgenie.domain.ingredient.dto.NutritionUpdateRequest;
+import com.cookgenie.domain.ingredient.dto.OfficialFoodCandidateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -65,6 +66,22 @@ public class IngredientController {
     public ResponseEntity<GlobalResponse<List<IngredientSuggestionResponse>>> getSuggestions(
             @Parameter(description = "카테고리 ID") @PathVariable Long categoryId) {
         return ResponseEntity.ok(GlobalResponse.success(ingredientService.getSuggestions(categoryId)));
+    }
+
+    /** GET /ingredients/official-search?keyword=&limit= - 식약처 가공식품 공공데이터에서 이름으로 후보 검색 */
+    @Operation(
+            summary = "가공식품 공공데이터 검색",
+            description = "식약처 가공식품 공공데이터에서 keyword(부분 일치)로 후보를 검색합니다. \"실온\"으로 검색해서 "
+                    + "쭉 보다가 \"닭\"을 덧붙여 좁혀가는 식으로 쓸 수 있습니다. foodNm에 브랜드명이 안 들어있는 경우가 "
+                    + "많아서 mfrNm(제조사)도 같이 내려주니 화면에 같이 보여주세요. 사용자가 후보 하나를 고르면 그 "
+                    + "값(calories/carbohydrateG/proteinG/fatG, 전부 100g/100ml 기준으로 정규화됨)을 그대로 "
+                    + "POST /ingredients에 직접 입력값으로 넘기면 됩니다."
+    )
+    @GetMapping("/official-search")
+    public ResponseEntity<GlobalResponse<List<OfficialFoodCandidateResponse>>> searchOfficialFoods(
+            @Parameter(description = "검색 키워드") @RequestParam String keyword,
+            @Parameter(description = "최대 개수 (기본 20)") @RequestParam(required = false) Integer limit) {
+        return ResponseEntity.ok(GlobalResponse.success(ingredientService.searchOfficialFoods(keyword, limit)));
     }
 
     /** POST /ingredients - 목록에 없는 새 식재료 등록 (같은 이름이 있으면 재사용) */

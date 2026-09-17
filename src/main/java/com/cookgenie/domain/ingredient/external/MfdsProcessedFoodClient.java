@@ -1,6 +1,7 @@
 package com.cookgenie.domain.ingredient.external;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +27,11 @@ import tools.jackson.databind.ObjectMapper;
  * 직접 한 번만 URL 인코딩한 뒤 {@link URI#create}로 감싸서 RestClient가 다시 인코딩(이중 인코딩)하지
  * 못하게 한다 - {@code CoupangProductClient}에서 겪었던 것과 같은 종류의 버그를 미리 피하는 것.
  * 401이 나면 인코딩된 키를 그대로 설정값에 넣어보는 것도 시도해볼 것(포털 안내에도 명시된 흔한 이슈).
+ *
+ * <p><b>기준량 정규화</b>: 실제 데이터를 보면 기준량(nutConSrtrQua)이 100g/100ml가 아닌 항목이 많다
+ * (1회 제공량, 포장 전체 중량 기준 등 제각각). 100이 아니면 버리는 대신, 100 기준으로 비례 환산해서
+ * 항상 우리 스키마(referenceAmount=100 고정)에 맞춰 반환한다 - 이전에는 100이 아니면 통째로 걸러버려서
+ * 흔한 가공식품 다수가 매칭돼도 영양정보가 안 잡히는 문제가 있었음.
  */
 @Slf4j
 @Component
@@ -47,34 +53,39 @@ public class MfdsProcessedFoodClient {
     }
 
     /**
-     * 이름으로 가공식품을 검색해 기준량이 100g/100ml인 첫 매칭 결과를 영양정보로 변환한다.
-     * 매칭 실패, 호출 실패(키 미설정/네트워크 오류 등)면 empty를 반환한다 - 호출부는 기존 AI 추정으로 넘어가면 된다.
+     * 이름(부분 일치)으로 가공식품을 검색해 최대 limit개의 후보를 반환한다. 화면에서 사용자가 직접 정확한
+     * 제품을 고를 수 있게 하는 용도. 호출 실패(키 미설정/네트워크 오류 등)면 빈 리스트.
      */
-    public Optional<NutritionEstimate> search(String name) {
+    public List<OfficialFoodCandidate> searchCandidates(String keyword, int limit) {
         try {
             String query = "serviceKey=" + encode(serviceKey)
-                    + "&type=json&numOfRows=10&pageNo=1&foodNm=" + encode(name);
+                    + "&type=json&numOfRows=" + Math.max(1, limit) + "&pageNo=1&foodNm=" + encode(keyword);
             URI uri = URI.create(BASE_URL + "?" + query);
 
             String body = restClient.get().uri(uri).retrieve().body(String.class);
-            return parseFirstMatch(name, body);
+            return parseCandidates(keyword, body);
         } catch (Exception e) {
-            log.warn("[식약처 가공식품 조회] 호출 실패 - name={}, error={}", name, e.getMessage());
-            return Optional.empty();
+            log.warn("[식약처 가공식품 검색] 호출 실패 - keyword={}, error={}", keyword, e.getMessage());
+            return List.of();
         }
     }
 
-    private Optional<NutritionEstimate> parseFirstMatch(String name, String body) {
+    /** 이름으로 검색해 첫 매칭 결과를 영양정보로 변환한다. 매칭 없으면 empty - 호출부는 AI 추정으로 넘어가면 된다. */
+    public Optional<NutritionEstimate> search(String name) {
+        return searchCandidates(name, 5).stream().findFirst().map(OfficialFoodCandidate::toEstimate);
+    }
+
+    private List<OfficialFoodCandidate> parseCandidates(String keyword, String body) {
         if (body == null || body.isBlank()) {
-            return Optional.empty();
+            return List.of();
         }
         JsonNode root = objectMapper.readTree(body);
         JsonNode header = root.path("response").path("header");
         String resultCode = header.path("resultCode").asString("");
         if (!"00".equals(resultCode)) {
-            log.warn("[식약처 가공식품 조회] resultCode={} resultMsg={} name={}",
-                    resultCode, header.path("resultMsg").asString(""), name);
-            return Optional.empty();
+            log.warn("[식약처 가공식품 검색] resultCode={} resultMsg={} keyword={}",
+                    resultCode, header.path("resultMsg").asString(""), keyword);
+            return List.of();
         }
 
         JsonNode itemsNode = root.path("response").path("body").path("items").path("item");
@@ -86,29 +97,33 @@ public class MfdsProcessedFoodClient {
         }
 
         return items.stream()
-                .map(this::toEstimate)
+                .map(this::toCandidate)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
-                .findFirst();
+                .toList();
     }
 
-    /** 기준량이 100g/100ml가 아닌 항목은(우리 스키마가 항상 100 기준이라) 건너뛴다. */
-    private Optional<NutritionEstimate> toEstimate(JsonNode item) {
+    /** 기준량을 100g/100ml 기준으로 비례 환산한다. 기준량을 못 읽으면(0 또는 파싱 실패) 신뢰할 수 없어 버린다. */
+    private Optional<OfficialFoodCandidate> toCandidate(JsonNode item) {
         String[] referenceAmountUnit = parseReference(text(item, "nutConSrtrQua"));
         Integer referenceAmount = parseInt(referenceAmountUnit[0]);
-        if (referenceAmount == null || referenceAmount != 100) {
+        if (referenceAmount == null || referenceAmount == 0) {
             return Optional.empty();
         }
-        return Optional.of(new NutritionEstimate(
-                true,
+        BigDecimal ratio = BigDecimal.valueOf(100).divide(BigDecimal.valueOf(referenceAmount), 4, RoundingMode.HALF_UP);
+
+        return Optional.of(new OfficialFoodCandidate(
+                text(item, "foodCd"),
+                text(item, "foodNm"),
+                text(item, "mfrNm"),
                 referenceAmountUnit[1],
-                parseInt(text(item, "enerc")),
-                parseDecimal(text(item, "chocdf")),
-                parseDecimal(text(item, "prot")),
-                parseDecimal(text(item, "fatce")),
-                parseDecimal(text(item, "sugar")),
-                parseDecimal(text(item, "nat")),
-                parseDecimal(text(item, "fibtg"))
+                scaleInt(parseInt(text(item, "enerc")), ratio),
+                scaleDecimal(parseDecimal(text(item, "chocdf")), ratio),
+                scaleDecimal(parseDecimal(text(item, "prot")), ratio),
+                scaleDecimal(parseDecimal(text(item, "fatce")), ratio),
+                scaleDecimal(parseDecimal(text(item, "sugar")), ratio),
+                scaleDecimal(parseDecimal(text(item, "nat")), ratio),
+                scaleDecimal(parseDecimal(text(item, "fibtg")), ratio)
         ));
     }
 
@@ -143,6 +158,14 @@ public class MfdsProcessedFoodClient {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private BigDecimal scaleDecimal(BigDecimal value, BigDecimal ratio) {
+        return value == null ? null : value.multiply(ratio).setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private Integer scaleInt(Integer value, BigDecimal ratio) {
+        return value == null ? null : BigDecimal.valueOf(value).multiply(ratio).setScale(0, RoundingMode.HALF_UP).intValue();
     }
 
     private String encode(String value) {
