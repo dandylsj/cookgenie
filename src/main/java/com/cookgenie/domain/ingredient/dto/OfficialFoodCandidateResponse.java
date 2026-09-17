@@ -1,5 +1,6 @@
 package com.cookgenie.domain.ingredient.dto;
 
+import com.cookgenie.domain.ingredient.entity.OfficialProcessedFood;
 import com.cookgenie.domain.ingredient.external.OfficialFoodCandidate;
 import java.math.BigDecimal;
 import lombok.Getter;
@@ -32,5 +33,20 @@ public class OfficialFoodCandidateResponse {
         this.sugarG = candidate.sugarG();
         this.sodiumMg = candidate.sodiumMg();
         this.fiberG = candidate.fiberG();
+    }
+
+    /** {@link com.cookgenie.domain.ingredient.repository.OfficialProcessedFoodRepository} 검색 결과용. */
+    public OfficialFoodCandidateResponse(OfficialProcessedFood food) {
+        this.foodCd = food.getFoodCd();
+        this.foodNm = food.getFoodNm();
+        this.mfrNm = food.getMfrNm();
+        this.referenceUnit = food.getReferenceUnit();
+        this.calories = food.getCalories();
+        this.carbohydrateG = food.getCarbohydrateG();
+        this.proteinG = food.getProteinG();
+        this.fatG = food.getFatG();
+        this.sugarG = food.getSugarG();
+        this.sodiumMg = food.getSodiumMg();
+        this.fiberG = food.getFiberG();
     }
 }

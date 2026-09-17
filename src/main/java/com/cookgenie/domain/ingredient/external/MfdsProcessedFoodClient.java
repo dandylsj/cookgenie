@@ -55,6 +55,11 @@ public class MfdsProcessedFoodClient {
     /**
      * 이름(부분 일치)으로 가공식품을 검색해 최대 limit개의 후보를 반환한다. 화면에서 사용자가 직접 정확한
      * 제품을 고를 수 있게 하는 용도. 호출 실패(키 미설정/네트워크 오류 등)면 빈 리스트.
+     *
+     * <p><b>주의</b>: 이 API의 foodNm 파라미터는 완전 일치만 지원한다(부분/포함 검색 불가) - 실측으로 확인됨.
+     * "실온"→"닭"처럼 좁혀가며 찾는 부분검색 UX는 {@link com.cookgenie.domain.ingredient.OfficialProcessedFoodSyncService}가
+     * foodNm 없이 전체 데이터를 로컬 DB로 복사해둔 뒤 그 테이블에서 LIKE 검색하는 방식으로 만든다
+     * ({@link com.cookgenie.domain.ingredient.repository.OfficialProcessedFoodRepository}).
      */
     public List<OfficialFoodCandidate> searchCandidates(String keyword, int limit) {
         try {
@@ -75,39 +80,100 @@ public class MfdsProcessedFoodClient {
         return searchCandidates(name, 5).stream().findFirst().map(OfficialFoodCandidate::toEstimate);
     }
 
+    /**
+     * foodNm 필터 없이 pageNo/numOfRows로 전체 데이터를 페이지 단위로 가져온다. 전체 약 59만 건을 로컬 DB로
+     * 복사하는 {@link com.cookgenie.domain.ingredient.OfficialProcessedFoodSyncService}가 순차적으로 호출한다.
+     * 호출 실패면 빈 페이지(totalCount=0)를 반환한다 - 호출부가 재시도/중단 여부를 판단.
+     */
+    public PageResult fetchPage(int pageNo, int numOfRows) {
+        try {
+            String query = "serviceKey=" + encode(serviceKey)
+                    + "&type=json&numOfRows=" + numOfRows + "&pageNo=" + pageNo;
+            URI uri = URI.create(BASE_URL + "?" + query);
+
+            String body = restClient.get().uri(uri).retrieve().body(String.class);
+            return parsePage(pageNo, body);
+        } catch (Exception e) {
+            log.warn("[식약처 가공식품 전체 동기화] 페이지 조회 실패 - pageNo={}, error={}", pageNo, e.getMessage());
+            return new PageResult(List.of(), 0);
+        }
+    }
+
+    /** 전체 동기화용 페이지 결과. items는 100g/100ml 기준으로 정규화된 이 페이지의 후보 목록, totalCount는 전체 건수. */
+    public record PageResult(List<OfficialFoodCandidate> items, int totalCount) {
+    }
+
     private List<OfficialFoodCandidate> parseCandidates(String keyword, String body) {
-        if (body == null || body.isBlank()) {
+        JsonNode root = readRoot(body);
+        if (root == null) {
             return List.of();
         }
-        JsonNode root = objectMapper.readTree(body);
-        JsonNode header = root.path("response").path("header");
+        JsonNode header = root.path("header");
         String resultCode = header.path("resultCode").asString("");
         if (!"00".equals(resultCode)) {
-            // data.go.kr는 서비스키/게이트웨이 에러일 때 response.header가 아니라 cmmMsgHeader(returnReasonCode/
-            // returnAuthMsg) 같은 완전히 다른 형태로 응답하는 경우가 있음 - 원인을 바로 알 수 있게 원본을 로그에 남긴다.
-            log.warn("[식약처 가공식품 검색] resultCode={} resultMsg={} keyword={} rawBody={}",
-                    resultCode, header.path("resultMsg").asString(""), keyword,
-                    body.length() > 500 ? body.substring(0, 500) : body);
+            logNonZeroResult(header, resultCode, "keyword=" + keyword, body);
             return List.of();
         }
-
-        JsonNode itemsNode = root.path("response").path("body").path("items").path("item");
-        List<JsonNode> items = new ArrayList<>();
-        if (itemsNode.isArray()) {
-            itemsNode.forEach(items::add);
-        } else if (itemsNode.isObject()) {
-            items.add(itemsNode);
-        }
-
-        return items.stream()
+        return extractItems(root).stream()
                 .map(this::toCandidate)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .toList();
     }
 
+    private PageResult parsePage(int pageNo, String body) {
+        JsonNode root = readRoot(body);
+        if (root == null) {
+            return new PageResult(List.of(), 0);
+        }
+        JsonNode header = root.path("header");
+        String resultCode = header.path("resultCode").asString("");
+        if (!"00".equals(resultCode)) {
+            logNonZeroResult(header, resultCode, "pageNo=" + pageNo, body);
+            return new PageResult(List.of(), 0);
+        }
+
+        int totalCount = root.path("body").path("totalCount").asInt(0);
+        List<OfficialFoodCandidate> candidates = extractItems(root).stream()
+                .map(this::toCandidate)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .toList();
+        return new PageResult(candidates, totalCount);
+    }
+
+    private JsonNode readRoot(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        return objectMapper.readTree(body);
+    }
+
+    /** 응답 형태는 {"header":{...},"body":{...}}로 평평하다 - response로 한 번 더 감싸져 있지 않다. */
+    private List<JsonNode> extractItems(JsonNode root) {
+        JsonNode itemsNode = root.path("body").path("items").path("item");
+        List<JsonNode> items = new ArrayList<>();
+        if (itemsNode.isArray()) {
+            itemsNode.forEach(items::add);
+        } else if (itemsNode.isObject()) {
+            items.add(itemsNode);
+        }
+        return items;
+    }
+
+    private void logNonZeroResult(JsonNode header, String resultCode, String context, String body) {
+        // NODATA_ERROR(03)는 검색 결과가 없다는 정상 응답이고, 그 외(서비스키 오류 등)는 원인 파악을 위해
+        // 원본 응답 본문을 남긴다 - data.go.kr는 게이트웨이 오류일 때 header가 아예 다른 형태로 오기도 함.
+        log.warn("[식약처 가공식품 조회] resultCode={} resultMsg={} {} rawBody={}",
+                resultCode, header.path("resultMsg").asString(""), context,
+                body.length() > 500 ? body.substring(0, 500) : body);
+    }
+
     /** 기준량을 100g/100ml 기준으로 비례 환산한다. 기준량을 못 읽으면(0 또는 파싱 실패) 신뢰할 수 없어 버린다. */
     private Optional<OfficialFoodCandidate> toCandidate(JsonNode item) {
+        if (text(item, "foodCd") == null || text(item, "foodNm") == null) {
+            return Optional.empty();
+        }
         String[] referenceAmountUnit = parseReference(text(item, "nutConSrtrQua"));
         Integer referenceAmount = parseInt(referenceAmountUnit[0]);
         if (referenceAmount == null || referenceAmount == 0) {

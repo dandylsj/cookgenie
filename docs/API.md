@@ -467,6 +467,8 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 식약처 "전국통합식품영양성분정보(가공식품)" 공공데이터에서 `keyword`(부분 일치)로 후보를 검색합니다. "실온"으로 검색해서 쭉 보다가 "닭"을 덧붙여 좁혀가는 식으로 씁니다. `foodNm`에 브랜드명이 안 들어있는 경우가 많아서(예: "요거트 아이스크림"이라는 같은 이름으로 제조사가 다른 상품이 여럿) `mfrNm`(제조사)도 같이 내려주니 화면에 같이 보여줘야 합니다.
 
+> **주의**: 정부 API 자체(`MfdsProcessedFoodClient`)는 `foodNm`이 완전 일치해야만 찾아지고 부분검색을 지원하지 않습니다(실측으로 확인됨). 이 엔드포인트는 4.8의 동기화로 미리 로컬 테이블(`official_processed_foods`, 약 59만 건)에 복사해둔 데이터에서 LIKE 검색을 합니다 — 동기화 전에는 항상 빈 목록만 나옵니다.
+
 | 파라미터 | 필수 | 설명 |
 |---|---|---|
 | keyword | O | 검색어(부분 일치) |
@@ -475,6 +477,20 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 **Response** `200 OK` — `GlobalResponse<List<OfficialFoodCandidateResponse>>` (`foodCd`, `foodNm`, `mfrNm`, `referenceUnit`, `calories`, `carbohydrateG`, `proteinG`, `fatG`, `sugarG`, `sodiumMg`, `fiberG` — 전부 100g/100ml 기준으로 정규화된 값)
 
 사용자가 후보 하나를 고르면, 그 값들을 그대로 4.4(등록)의 `calories`/`carbohydrateG`/`proteinG`/`fatG`(직접 입력값)로 넘겨서 등록하면 됩니다(추가 API/AI 호출 불필요, `dataSource=USER_INPUT`, `isVerified=true`로 저장됨).
+
+### 4.8 가공식품 공공데이터 전체 동기화 — `POST /ingredients/official-foods/sync?force=`
+
+식약처 가공식품 공공데이터 API 전체(약 59만 건)를 `foodNm` 필터 없이 페이지 단위(1000건씩, 약 591페이지)로 전부 가져와 로컬 테이블 `official_processed_foods`에 복사합니다. 4.7의 부분검색이 실제로 동작하려면 이 동기화를 최초 한 번 실행해야 합니다.
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| force | X (기본 false) | 이미 데이터가 있어도 전부 지우고 처음부터 다시 받을지 여부 |
+
+- 이미 데이터가 있고 `force=false`면 아무것도 하지 않고 현재 건수만 응답에 담아 반환합니다(`started=false`).
+- 백그라운드(`@Async`)로 실행되며 응답은 시작 여부만 즉시 반환합니다 — 실제 완료까지 몇 분 정도 걸릴 수 있습니다(정부 API를 순차적으로 약 591번 호출).
+- 중간에 페이지 조회가 실패하면 그 지점에서 멈추고 로그만 남깁니다(재시도 없음) — 다시 시도하려면 `force=true`로 재호출하면 됩니다.
+
+**Response** `200 OK` — `GlobalResponse<SyncTriggerResult>` (`started`: Boolean, `previousCount`: Long, `message`: String)
 
 ### 공통 DTO
 
