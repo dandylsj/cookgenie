@@ -278,6 +278,28 @@ public class IngredientService {
         return partial.isEmpty() ? Optional.empty() : Optional.of(partial.get(0));
     }
 
+    /**
+     * 이름으로 식약처 가공식품 공공데이터 로컬 미러(완전 일치)와 매칭을 시도한다. 사진 인식(영수증/주문내역/
+     * 실물 상품)으로 얻은 이름을 이미 등록된 식재료가 아니라 정부 공식 데이터와 먼저 맞춰보는 용도 -
+     * 매칭되면 AI 추정 없이 그 값을 바로 등록에 쓸 수 있다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<OfficialProcessedFood> matchProcessedFoodByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        return officialProcessedFoodRepository.findFirstByFoodNm(name.trim());
+    }
+
+    /** 이름으로 식약처 음식(배달/외식 메뉴) 공공데이터 로컬 미러(완전 일치)와 매칭을 시도한다. 위 메서드와 같은 용도. */
+    @Transactional(readOnly = true)
+    public Optional<OfficialDish> matchDishByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        return officialDishRepository.findFirstByFoodNm(name.trim());
+    }
+
     /** 식재료를 삭제한다. 이미 어떤 냉장고에 등록되어 있는 식재료는 삭제할 수 없다. */
     @Transactional
     public void deleteIngredient(Long ingredientId) {

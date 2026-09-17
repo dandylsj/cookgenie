@@ -64,7 +64,7 @@ MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
 | Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제. **각 재료의 냉장고 보유 여부(inFridge)도 계산** |
-| Receipt(영수증 인식) | **1/3단계 완료**: 영수증 사진 → Claude 비전으로 식재료 후보 추출(미리보기만, 저장은 안 함). 구매내역 캡처/실물 사진 인식은 미착수 |
+| Receipt/Product(사진 인식) | **3/3단계 완료**: 영수증 사진 / 온라인 쇼핑몰 주문내역 캡처 / 실물 상품 사진 → Claude 비전으로 식재료 후보 추출(미리보기만, 저장은 안 함), **기존 재료·가공식품·음식 공식 데이터와 자동 매칭**까지 포함 |
 | Shopping(장보기) | 완료 — 냉장고별 장보기 리스트 추가/조회/체크/삭제, **쿠팡파트너스 연동 최저가 검색** |
 | MealLog(식단 기록) / NutritionGoal | **백엔드 완료** — 기록 추가(레시피 선택/재료 직접입력)/하루 상세 조회/달력 요약/삭제, 목표 칼로리·탄단지 설정/조회. **프론트는 미착수** |
 | 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 | 미구현 |
@@ -185,7 +185,7 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 
 ## 사진으로 재료 자동 등록 — 1단계: 영수증 인식
 
-원래 앱 기획에 있던 "사진으로 재료 등록" 3가지 방법(영수증 사진 / 쿠팡·네이버 구매내역 캡처 / 실물 상품 사진) 중 첫 번째. 나머지 둘은 미착수.
+원래 앱 기획에 있던 "사진으로 재료 등록" 3가지 방법(영수증 사진 / 쿠팡·네이버 구매내역 캡처 / 실물 상품 사진) 중 첫 번째.
 
 - `domain/receipt/` 신규 패키지. `POST /fridges/{fridgeId}/receipts/scan` — `multipart/form-data`로 영수증 이미지(JPEG/PNG/WEBP, 최대 10MB)를 받아 Claude **비전**에게 분석시켜 식재료 후보 목록(이름/수량/카테고리 추정)을 뽑아준다.
 - **이 API는 아무것도 저장하지 않는 순수 미리보기**다 — 영수증 항목명은 "국산돈목심600"처럼 축약/코드화되어 있어서 그대로 자동 등록하면 안 되고(사용자 지시: 완전 자동보다 확인 단계 필요), 인식 결과를 프론트가 보여주고 사용자가 확인/수정한 뒤 **기존** `POST /ingredients`(4.4) + `POST /fridges/{fridgeId}/items`(3.1)를 그대로 호출해서 등록하는 구조로 설계함 — 새로 "일괄 등록" API를 만들지 않고 이미 검증된 두 엔드포인트를 재사용.
@@ -194,6 +194,16 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - 이름 매칭: `IngredientService`에 `matchByName(name)`(정확 일치 → 부분 일치 순) public 메서드를 새로 뽑아냄 — 기존에 `RecipeService`에 똑같은 로직이 private으로 중복되어 있었는데, `ReceiptService`까지 세 번째로 똑같이 베끼는 대신 `IngredientService`(식재료 매칭의 자연스러운 소유자)로 옮기고 `RecipeService.matchIngredient()`는 이걸 위임 호출하도록 리팩터링함.
 - 로컬 검증: PowerShell `System.Drawing`으로 가짜 영수증 이미지(품목 5개)를 만들어 스캔 → 실제로 항목/카테고리 추정 정상 인식 → 인식된 이름으로 `POST /ingredients`(영양정보 자동 추정까지) → `POST /fridges/{fridgeId}/items` 등록까지 end-to-end 확인 완료.
 - 겪은 삽질: Windows Git Bash curl에서 `-F "image=@경로;type=image/png"`처럼 `;type=`을 붙이면 `exit 26`으로 파일을 못 읽는다고 나옴(원인 불명, 다른 호스트로는 정상 업로드됨) — `;type=` 빼고 `-F "image=@경로"`만 쓰면 정상(위 "기술적 특이사항" 섹션에도 기록).
+
+## 사진으로 재료 자동 등록 — 2/3단계: 주문내역 캡처 + 실물 상품 사진 (+ 공식 데이터 자동 매칭)
+
+나머지 두 방법(온라인 쇼핑몰 주문내역 캡처, 실물 상품 사진)을 1단계와 같은 비전+tool-use 패턴으로 추가함. 동시에 "인식된 이름을 기존 재료뿐 아니라 가공식품/음식 공식 데이터에도 자동 매칭해줄 수 있냐"는 요청을 반영해서, 세 인식 API 모두 매칭 결과를 확장함.
+
+- **주문내역 캡처**: `POST /fridges/{fridgeId}/receipts/scan-order-history` — 영수증과 추출 스키마(`ReceiptScanResult`)가 완전히 동일해서 새 클라이언트를 만들지 않고 `ClaudeReceiptClient`에 `scanOrderHistory()` 메서드만 추가함(프롬프트만 "쿠팡/마켓컬리/네이버쇼핑 주문내역 화면 캡처"에 맞게 다르게 줌, tool 정의는 공유). `ReceiptService`도 공통 이미지 검증(`validateImage`)/응답 변환 로직을 추출해서 `scanReceipt()`/`scanOrderHistory()`가 나눠 씀.
+- **실물 상품 사진**: 새 `domain/product/` 패키지 — `POST /fridges/{fridgeId}/products/scan`. 상품 포장/라벨 사진 한 장(또는 여러 상품이 함께 찍힌 사진)에서 브랜드명 포함 상품명(예: "오뚜기 진라면 매운맛")과 중량 표시를 읽어내는 프롬프트를 쓰는 새 클라이언트 `ClaudeProductClient`를 만듦 — 다만 추출 결과 타입은 `domain/receipt/external/ReceiptScanResult`를 그대로 재사용(이름/수량/카테고리라는 추출 스키마가 완전히 같아서 굳이 새 record를 안 만듦). `ProductService`는 인식된 이름 → 기존 재료/공식 데이터 매칭 로직을 `ReceiptService.toItemResponse()`(public으로 변경)를 그대로 호출해서 재사용함 - 입력 사진 종류만 다를 뿐 "이름으로 맞춰본다"는 로직 자체가 동일해서 도메인 경계를 넘어 재사용하는 걸 선택함(이 코드베이스에 이미 있던 `RecipeService`→`IngredientService.matchByName()` 위임과 같은 패턴).
+- **공식 데이터 자동 매칭 확장**: `IngredientService`에 `matchProcessedFoodByName(name)`/`matchDishByName(name)`(둘 다 로컬 미러 완전 일치)을 추가하고, `ReceiptItemResponse`에 `matchedProcessedFood`/`matchedDish` 필드를 새로 붙임. `ReceiptService.toItemResponse()`가 이제 (1) `Ingredient` 마스터 → (2) 가공식품 로컬 미러 → (3) 음식 로컬 미러 순서로 매칭을 시도하고(이미 (1)에서 매칭됐으면 (2)(3)은 조회하지 않음), 매칭되면 그 값을 그대로 프론트가 `POST /ingredients`의 직접 입력값으로 넘겨서 **AI 추정 호출 없이** 정확한 영양정보로 등록할 수 있게 함. 세 사진 인식 API(영수증/주문내역/실물 상품) 모두 이 매칭을 공통으로 탄다.
+- `ErrorMessage`에 범용 `IMAGE_REQUIRED`/`IMAGE_RECOGNITION_FAILED` 추가(주문내역/실물 상품 API용 — 기존 `RECEIPT_IMAGE_REQUIRED`/`RECEIPT_SCAN_FAILED`는 문구가 "영수증"에 특화돼 있어서 그대로 재사용하지 않음. `RECEIPT_IMAGE_TOO_LARGE`/`UNSUPPORTED_IMAGE_TYPE`은 문구가 이미 범용적이라 그대로 재사용).
+- 프론트(cookgenieWeb)는 아직 두 기능 모두 `handleDummyRecognition()`으로 "준비 중" 알럿만 뜨는 상태 — 다음 세션에서 `ReceiptScanModal`을 일반화하거나 sibling 컴포넌트를 만들어 연결해야 함.
 
 ## 식단 기록(MealLog) API + 목표 영양정보(NutritionGoal) API
 
@@ -225,4 +235,4 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - 기존에 영양정보 없이 등록된 재료들(예: 계란/목살/양파/소금 등)을 일괄로 재추정하는 백필(backfill) 기능 (요청은 있었으나 미구현)
 - 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 / 로그아웃 시 JWT 즉시 무효화
 - **식단 캘린더 프론트 구현** (cookgenieWeb) — 위 MealLog API를 갖고 "오늘 상세" 화면(진행률 링 + 탄단지 바 + 6개 슬롯 리스트) + "달력" 화면(월별 그리드, 날짜별 식사 요약 배지) 두 가지를 만들어야 함
-- **사진으로 재료 등록 2/3단계**: 쿠팡/네이버 구매내역 캡처 화면 인식, 실물 상품 사진 인식(예: 만두 포장 사진 → 이름/카테고리 자동 인식) — 둘 다 방금 만든 `ClaudeReceiptClient`/비전 패턴을 그대로 확장하면 됨
+- **사진으로 재료 등록 2/3단계 프론트 연결** — 백엔드는 완료(`POST /fridges/{fridgeId}/receipts/scan-order-history`, `POST /fridges/{fridgeId}/products/scan`), 프론트(cookgenieWeb)의 "주문 내역 인식"/"재료 인식" 버튼이 아직 `handleDummyRecognition()`으로 알럿만 띄우는 상태라 `ReceiptScanModal`을 일반화하거나 sibling 컴포넌트로 연결해야 함
