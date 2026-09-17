@@ -77,6 +77,7 @@ jobs:
           echo "COUPANG_ACCESS_KEY=${{ secrets.COUPANG_ACCESS_KEY }}" >> .env
           echo "COUPANG_SECRET_KEY=${{ secrets.COUPANG_SECRET_KEY }}" >> .env
           echo "MFDS_PROCESSED_FOOD_API_KEY=${{ secrets.MFDS_PROCESSED_FOOD_API_KEY }}" >> .env
+          echo "MFDS_DISH_API_KEY=${{ secrets.MFDS_DISH_API_KEY }}" >> .env
           echo "SPRING_JPA_SHOW_SQL=false" >> .env
           echo "SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL=false" >> .env
           echo "SERVER_SHUTDOWN=graceful" >> .env
