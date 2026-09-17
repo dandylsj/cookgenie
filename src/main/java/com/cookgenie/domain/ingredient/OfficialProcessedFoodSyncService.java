@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -38,12 +39,7 @@ public class OfficialProcessedFoodSyncService {
     /**
      * 이미 데이터가 있으면(force=false) 시작하지 않는다. force=true면 기존 데이터는 그대로 둔 채 전체를
      * 다시 훑어서 누락된 항목만 추가로 저장한다(더 이상 지우지 않음 - {@link #saveBatch}가 이미 저장된
-     * foodCd를 안전하게 걸러내므로 재실행은 항상 멱등적이다).
-     *
-     * <p>정부 API의 오프셋 기반 페이지네이션이 591페이지처럼 깊게 들어가면 안정적이지 않아서(같은 foodCd가
-     * 여러 페이지에 걸쳐 반복돼서 나옴, 실측으로 확인됨) 한 번의 전체 훑기로 59만 건이 다 안 채워지고
-     * 일부만(예: 245,668건) 저장되는 경우가 있다 - 이때는 force=true로 다시 돌리면 지난번과 다른 부분을
-     * 우연히 더 보게 되어 누락분이 점점 채워진다. 결과의 {@code started}가 true일 때만 컨트롤러가
+     * 항목을 안전하게 걸러내므로 재실행은 항상 멱등적이다). 결과의 {@code started}가 true일 때만 컨트롤러가
      * {@link #runSync()}를 이어서 호출해야 한다.
      */
     @Transactional(readOnly = true)
@@ -83,24 +79,33 @@ public class OfficialProcessedFoodSyncService {
     }
 
     /**
-     * 정부 API 페이지 사이에 같은 foodCd가 겹쳐서 나오는 경우가 실측으로 확인됨(페이지 경계가 안정적이지
-     * 않은 듯) - 겹치는 항목을 그대로 저장하려 하면 foodCd 유니크 제약 위반으로 배치 전체(트랜잭션)가
-     * 롤백되고 동기화가 멈춰버림. 그래서 저장 전에 (1) 같은 배치 안에서의 중복을 먼저 걸러내고,
-     * (2) 이미 DB에 있는 foodCd도 한 번의 조회로 걸러낸 뒤 새 항목만 저장한다.
+     * foodCd는 "대표식품코드"라 서로 다른 제조사/상품이 같은 값을 공유하는 경우가 흔하다(실측으로 확인됨 -
+     * foodCd 하나만으로 중복을 걸러냈더니 59만 건 중 24만5천여 건만 남고 다시 돌려도 더 안 늘어남).
+     * 그래서 진짜 같은 항목인지는 (foodCd, foodNm, mfrNm) 조합으로 판단해야 한다 - 저장 전에
+     * (1) 같은 배치 안에서의 중복을 먼저 걸러내고, (2) foodCd가 겹치는 기존 항목을 가져와 조합 키까지
+     * 비교해서 진짜 중복만 걸러낸 뒤 새 항목만 저장한다.
      */
     private int saveBatch(List<OfficialFoodCandidate> items) {
         Map<String, OfficialFoodCandidate> deduped = new LinkedHashMap<>();
-        items.forEach(item -> deduped.put(item.foodCd(), item));
+        items.forEach(item -> deduped.put(compositeKey(item.foodCd(), item.foodNm(), item.mfrNm()), item));
 
-        Set<String> alreadySaved = Set.copyOf(officialProcessedFoodRepository.findExistingFoodCds(deduped.keySet()));
-        List<OfficialProcessedFood> entities = deduped.values().stream()
-                .filter(item -> !alreadySaved.contains(item.foodCd()))
-                .map(this::toEntity)
+        Set<String> foodCds = deduped.values().stream().map(OfficialFoodCandidate::foodCd).collect(Collectors.toSet());
+        Set<String> alreadySaved = officialProcessedFoodRepository.findByFoodCdIn(foodCds).stream()
+                .map(food -> compositeKey(food.getFoodCd(), food.getFoodNm(), food.getMfrNm()))
+                .collect(Collectors.toSet());
+
+        List<OfficialProcessedFood> entities = deduped.entrySet().stream()
+                .filter(entry -> !alreadySaved.contains(entry.getKey()))
+                .map(entry -> toEntity(entry.getValue()))
                 .toList();
         if (!entities.isEmpty()) {
             officialProcessedFoodRepository.saveAll(entities);
         }
         return entities.size();
+    }
+
+    private String compositeKey(String foodCd, String foodNm, String mfrNm) {
+        return foodCd + "" + foodNm + "" + (mfrNm == null ? "" : mfrNm);
     }
 
     private OfficialProcessedFood toEntity(OfficialFoodCandidate candidate) {
