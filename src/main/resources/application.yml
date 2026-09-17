@@ -49,3 +49,6 @@ youtube:
 coupang:
   access-key: ${COUPANG_ACCESS_KEY}
   secret-key: ${COUPANG_SECRET_KEY}
+
+mfds:
+  processed-food-api-key: ${MFDS_PROCESSED_FOOD_API_KEY}

@@ -15,6 +15,7 @@ import com.cookgenie.domain.ingredient.entity.Ingredient;
 import com.cookgenie.domain.ingredient.entity.IngredientType;
 import com.cookgenie.domain.ingredient.entity.NutritionInfo;
 import com.cookgenie.domain.ingredient.external.ClaudeNutritionClient;
+import com.cookgenie.domain.ingredient.external.MfdsProcessedFoodClient;
 import com.cookgenie.domain.ingredient.external.NutritionEstimate;
 import com.cookgenie.domain.ingredient.repository.CategoryRepository;
 import com.cookgenie.domain.ingredient.repository.IngredientRepository;
@@ -39,6 +40,7 @@ public class IngredientService {
     private final NutritionInfoRepository nutritionInfoRepository;
     private final FridgeItemRepository fridgeItemRepository;
     private final ClaudeNutritionClient claudeNutritionClient;
+    private final MfdsProcessedFoodClient mfdsProcessedFoodClient;
 
     /**
      * 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다.
@@ -93,7 +95,9 @@ public class IngredientService {
      * 목록에 없는 식재료를 등록한다.
      * 같은 이름의 식재료가 이미 있으면 새로 만들지 않고 그대로 재사용한다(중복 방지, 이미 있는 영양정보 재사용).
      * 완전히 새 이름이면 세 가지 경우로 나뉜다: (1) calories 등을 직접 줬으면 그 값을 그대로 저장(dataSource=USER_INPUT,
-     * isVerified=true), (2) 안 줬지만 autoEstimateNutrition=true면 Claude에게 추정을 요청(dataSource=LLM_ESTIMATED),
+     * isVerified=true), (2) 안 줬지만 autoEstimateNutrition=true면 먼저 식약처 가공식품 공공데이터(이름 검색)를
+     * 시도하고 매칭되면 그 값을 그대로 저장(dataSource=OFFICIAL_DB, isVerified=true) — 브랜드/상품명이 있는
+     * 가공식품은 정부 실측값이 AI 추정보다 정확함. 못 찾으면 Claude에게 추정을 요청(dataSource=LLM_ESTIMATED),
      * (3) 둘 다 아니면 영양정보 없이 등록한다(dataSource=USER_INPUT, isVerified=false) — 매번 Claude를 호출하면
      * 토큰이 많이 들어서(특히 영수증 인식처럼 한 번에 여러 재료를 등록할 때), 기본은 호출 안 하고 필요할 때
      * PUT .../nutrition(직접 입력) 또는 POST .../nutrition/estimate(나중에 AI 추정)로 채우도록 함.
@@ -111,19 +115,25 @@ public class IngredientService {
 
         Category category = findOrCreateCategory(request.getCategoryName());
         boolean hasManualNutrition = request.hasManualNutrition();
-        Optional<NutritionEstimate> estimate = (!hasManualNutrition && Boolean.TRUE.equals(request.getAutoEstimateNutrition()))
-                ? claudeNutritionClient.estimate(name)
+        boolean shouldEstimate = !hasManualNutrition && Boolean.TRUE.equals(request.getAutoEstimateNutrition());
+        Optional<NutritionEstimate> officialEstimate = shouldEstimate
+                ? mfdsProcessedFoodClient.search(name)
                 : Optional.empty();
+        Optional<NutritionEstimate> estimate = officialEstimate.isPresent()
+                ? officialEstimate
+                : (shouldEstimate ? claudeNutritionClient.estimate(name) : Optional.empty());
 
-        DataSource dataSource = estimate.isPresent() ? DataSource.LLM_ESTIMATED : DataSource.USER_INPUT;
+        DataSource dataSource = officialEstimate.isPresent() ? DataSource.OFFICIAL_DB
+                : estimate.isPresent() ? DataSource.LLM_ESTIMATED
+                : DataSource.USER_INPUT;
         Ingredient ingredient = ingredientRepository.save(
                 Ingredient.builder()
                         .name(name)
                         .category(category)
-                        .ingredientType(IngredientType.RAW)
+                        .ingredientType(officialEstimate.isPresent() ? IngredientType.PROCESSED : IngredientType.RAW)
                         .defaultUnit(resolveDefaultUnit(request.getDefaultUnit(), request.getReferenceUnit(), estimate))
                         .dataSource(dataSource)
-                        .isVerified(hasManualNutrition)
+                        .isVerified(hasManualNutrition || officialEstimate.isPresent())
                         .build()
         );
 

@@ -26,17 +26,20 @@ ANTHROPIC_API_KEY: sk-ant-...
 YOUTUBE_API_KEY: AIza...
 COUPANG_ACCESS_KEY: 쿠팡파트너스에서 발급받은 액세스 키
 COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
+MFDS_PROCESSED_FOOD_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분정보(가공식품)" 서비스키(디코딩 키)
 ```
 
-이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
 
 `YOUTUBE_API_KEY`는 Google Cloud Console에서 **YouTube Data API v3**를 활성화하고 발급받은 API 키입니다(무료지만 일일 할당량 있음). 유튜브 레시피 검색/가져오기 기능에 쓰입니다.
 
 `COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`는 **쿠팡파트너스** 가입 후 발급받는 키입니다(HMAC 서명 인증). 값이 없거나 틀려도 앱은 정상 기동하고, `GET /coupang/search` 호출만 실패해서 빈 리스트를 반환합니다(크래시 안 남) — 로컬에서 이 기능을 안 쓸 거면 아무 문자열이나 넣어둬도 됨.
 
+`MFDS_PROCESSED_FOOD_API_KEY`는 공공데이터포털(data.go.kr)에서 "전국통합식품영양성분정보(가공식품)표준데이터" 활용신청 후 받는 서비스키입니다. **디코딩(원본) 키**를 넣어야 함 — `MfdsProcessedFoodClient`가 직접 한 번만 URL 인코딩하므로 이미 인코딩된 키를 넣으면 이중 인코딩으로 인증 실패함. 값이 없거나 틀려도 앱은 정상 기동하고, 재료 등록 시 이 조회만 실패해서 기존처럼 Claude 추정으로 넘어갑니다(크래시 안 남) — 로컬에서 이 기능을 안 쓸 거면 아무 문자열이나 넣어둬도 됨.
+
 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USERNAME`은 로컬 기본값(`localhost`/`3306`/`cookgenie`/`root`)이 있어서 별도 설정 없이 그대로 씁니다. 로컬 MySQL은 `sql/create_database.sql`로 `cookgenie` DB만 만들면 테이블은 앱 기동 시 자동 생성됩니다.
 
-**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** (없어도 크래시는 안 나고 쿠팡 검색만 안 됨).
+**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** (없어도 크래시는 안 나고 해당 조회만 안 됨).
 
 ### 지나간 사고: application.yml이 통째로 배포에서 빠져있었던 문제
 
@@ -128,7 +131,8 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 
 1. **1차 수정**: 프롬프트를 "브랜드명+상품명이 붙은 가공식품이어도 같은 종류 음식의 일반적인 영양성분으로 추정해줘"로 완화. 로컬 테스트 결과 "하림 통살 유린기"는 해결됐지만, "하림 안심 꿔바로우"(탕수육 계열 튀김요리)는 여전히 `isValidFood=false`로 거부됨 — 완화가 이름에 따라 일관되게 먹히지 않음.
 2. **2차 수정**: 프롬프트를 "먼저 음식 종류를 유추해보고, 조금이라도 짐작 가능하면 반드시 true로 하고 최선의 추정치를 내놔라"로 더 강하게 못박고, 브랜드 상품명 예시를 추가(꿔바로우 사례 포함). 또한 `nutritionTool()`의 JSON 스키마 속성 순서를 `Map.of`(순서 미보장) 대신 `LinkedHashMap`으로 고정해서, 모델이 영양성분 숫자들을 먼저 채우고 `isValidFood` 판단을 맨 마지막에 하도록 순서를 바꿈(먼저 추정해보게 유도 → 성급한 거부 감소 기대).
-3. **3차 수정 (현재) — 진짜 웹 검색 추가**: 등록은 되는데(`isValidFood=true`) 실제 값과 다르다는 피드백을 받음 — 애초에 이 클라이언트는 **웹 검색을 전혀 안 하고 Claude의 학습된 지식만으로 "추정"**하는 구조였음(그래서 특정 브랜드 제품의 정확한 포장지 영양정보와는 다를 수밖에 없었음). Anthropic Messages API의 서버사이드 `web_search` 도구(`web_search_20250305` — Haiku는 최신 동적 필터링 버전인 `web_search_20260209`을 지원 안 해서 기본형을 씀)를 `record_nutrition_estimate`와 함께 tools에 추가하고, `tool_choice`를 강제 호출(`{"type":"tool",...}`)에서 `{"type":"auto"}`로 바꿔서 Claude가 브랜드+상품명이 있는 이름은 먼저 검색해보고, 검색으로 못 찾으면 기존처럼 추정하도록 함. `max_tokens`도 검색 결과가 응답에 섞여 들어갈 걸 감안해 300→1500으로 늘림. **아직 실제 API로 검증 못 함.** 검색이 추가되면 호출당 지연시간/비용이 늘어난다는 점 참고(Anthropic 웹 검색은 사용 건당 별도 과금).
+3. **3차 수정 — 진짜 웹 검색 추가**: 등록은 되는데(`isValidFood=true`) 실제 값과 다르다는 피드백을 받음 — 애초에 이 클라이언트는 **웹 검색을 전혀 안 하고 Claude의 학습된 지식만으로 "추정"**하는 구조였음(그래서 특정 브랜드 제품의 정확한 포장지 영양정보와는 다를 수밖에 없었음). Anthropic Messages API의 서버사이드 `web_search` 도구(`web_search_20250305` — Haiku는 최신 동적 필터링 버전인 `web_search_20260209`을 지원 안 해서 기본형을 씀)를 `record_nutrition_estimate`와 함께 tools에 추가하고, `tool_choice`를 강제 호출(`{"type":"tool",...}`)에서 `{"type":"auto"}`로 바꿔서 Claude가 브랜드+상품명이 있는 이름은 먼저 검색해보고, 검색으로 못 찾으면 기존처럼 추정하도록 함. `max_tokens`도 검색 결과가 응답에 섞여 들어갈 걸 감안해 300→1500으로 늘림. **아직 실제 API로 검증 못 함.** 검색이 추가되면 호출당 지연시간/비용이 늘어난다는 점 참고(Anthropic 웹 검색은 사용 건당 별도 과금).
+4. **4차 수정 (현재) — 식약처 가공식품 공공데이터를 AI보다 먼저 조회**: 사용자가 식약처 "전국통합식품영양성분정보(가공식품)표준데이터" API(data.go.kr, 원본 CSV는 31만 건·130MB가 넘어서 번들 불가) 활용신청을 받아옴. AI 추정(웹검색 곁들여도 결국 "추정")보다 정부가 실측한 이 데이터가 더 정확하므로, `MfdsProcessedFoodClient.search(name)`을 만들어서 **`IngredientService.createIngredient()`에서 Claude 추정보다 먼저 시도**하도록 함 — `foodNm`으로 이름 검색해서 기준량이 100g/100ml인 첫 매칭 결과를 쓰고(`dataSource=OFFICIAL_DB`, `isVerified=true`, `ingredientType=PROCESSED`), 매칭이 없으면 기존처럼 Claude로 넘어감(폴백). `CoupangProductClient`에서 겪었던 것과 같은 이중 URL 인코딩 문제를 피하려고 `URI.create()`로 미리 인코딩한 URI를 만들어 넘김. **주의**: `foodNm`에는 브랜드명이 안 들어있는 경우가 많음(예: "요거트 아이스크림"이라는 같은 이름으로 제조사가 다른 여러 상품이 존재) — 지금은 그냥 첫 매칭을 쓰기 때문에 사용자가 기대한 특정 브랜드가 아닌 다른 제조사 값이 나올 수 있음(제조사명 `mfrNm` 기준 필터링은 아직 안 함, 필요하면 추가 개선 여지). `MFDS_PROCESSED_FOOD_API_KEY`는 반드시 **디코딩(원본) 키**를 써야 함(환경설정 섹션 참고). **아직 실제 API로 검증 못 함**(이 샌드박스 세션에서 api.data.go.kr으로 직접 접근이 막혀 있어서 로컬 테스트 불가) — 배포 후 실제 브랜드 가공식품 이름으로 등록해보고 확인 필요.
 
 ## 게스트 로그인 (회원가입 없이 바로 시작)
 
