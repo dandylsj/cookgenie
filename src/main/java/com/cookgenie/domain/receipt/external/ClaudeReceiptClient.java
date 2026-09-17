@@ -11,7 +11,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
-/** Claude(Anthropic Messages API, 비전)에게 영수증 사진을 보내 식재료 후보 목록을 추출시키는 클라이언트. */
+/**
+ * Claude(Anthropic Messages API, 비전)에게 영수증 사진 또는 온라인 쇼핑몰 주문내역 캡처를 보내 식재료 후보
+ * 목록을 추출시키는 클라이언트. 두 입력 형태(영수증/주문내역)는 추출 스키마({@link ReceiptScanResult})가
+ * 동일해서 tool 정의는 공유하고 프롬프트만 다르게 준다({@link #scan}/{@link #scanOrderHistory}).
+ */
 @Slf4j
 @Component
 public class ClaudeReceiptClient {
@@ -43,7 +47,24 @@ public class ClaudeReceiptClient {
                 + "적힌 상품명(예: \"국산돈목심600\")은 사람이 알아보기 쉬운 일반적인 이름(예: \"돼지 목심\")으로 "
                 + "풀어서 써줘. 세제/휴지/생활용품처럼 식재료가 아닌 항목은 결과에서 제외해줘. "
                 + "record_receipt_items 도구를 호출해서 결과를 알려줘.";
+        return call(prompt, mediaType, base64Image);
+    }
 
+    /**
+     * 온라인 쇼핑몰(쿠팡/마켓컬리/네이버쇼핑 등) 주문내역(구매내역) 화면 캡처를 분석해서 식재료로 보이는
+     * 항목들을 추출한다. 영수증과 추출 스키마는 동일하지만 화면 형태(썸네일+상품명+수량+가격이 나열된 목록)가
+     * 달라서 프롬프트만 다르게 준다. 실패하면 empty.
+     */
+    public Optional<ReceiptScanResult> scanOrderHistory(String mediaType, String base64Image) {
+        String prompt = "이 이미지는 쿠팡/마켓컬리/네이버쇼핑 같은 온라인 쇼핑몰의 주문내역(구매내역) 화면을 "
+                + "캡처한 것이다. 화면에 나열된 상품 중 식재료/음식으로 볼 수 있는 것만 골라 이름과 수량을 "
+                + "추출해줘. 상품명에 용량/옵션이 같이 적혀 있으면(예: \"국산 돼지 목살 600g\") 그대로 이름에 "
+                + "포함해도 된다. 주방용품/생활용품처럼 식재료가 아닌 항목은 결과에서 제외해줘. "
+                + "record_receipt_items 도구를 호출해서 결과를 알려줘.";
+        return call(prompt, mediaType, base64Image);
+    }
+
+    private Optional<ReceiptScanResult> call(String prompt, String mediaType, String base64Image) {
         ClaudeMessageRequest request = new ClaudeMessageRequest(
                 model,
                 MAX_TOKENS,
@@ -60,7 +81,7 @@ public class ClaudeReceiptClient {
 
             return Optional.ofNullable(extractResult(response));
         } catch (Exception e) {
-            log.warn("[영수증 인식] 호출 실패 - error={}", e.getMessage());
+            log.warn("[영수증/주문내역 인식] 호출 실패 - error={}", e.getMessage());
             return Optional.empty();
         }
     }

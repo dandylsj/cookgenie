@@ -792,19 +792,17 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
 
 ---
 
-## 8. 영수증 인식 API (`/fridges/{fridgeId}/receipts`)
+## 8. 사진으로 재료 인식 API
 
-**인증 필요.** 영수증 사진을 Claude(비전)에게 분석시켜 식재료로 보이는 품목을 추출합니다. **이 API는 아무것도 저장하지 않는 미리보기입니다** — 인식 결과를 보여주고 사용자가 확인/수정한 다음, 아래 4. 식재료 API / 3. 냉장고 재료 API를 호출해서 실제로 등록해야 합니다.
+**전부 인증 필요.** 사진을 Claude(비전)에게 분석시켜 식재료로 보이는 품목을 추출합니다. **셋 다 아무것도 저장하지 않는 미리보기입니다** — 인식 결과를 보여주고 사용자가 확인/수정한 다음, 아래 4. 식재료 API / 3. 냉장고 재료 API를 호출해서 실제로 등록해야 합니다. 입력 사진 종류(영수증/주문내역 캡처/실물 상품)만 다르고 응답 형태와 매칭 규칙은 완전히 동일합니다.
 
-### 8.1 영수증 스캔 — `POST /fridges/{fridgeId}/receipts/scan`
-
-`multipart/form-data`로 이미지 파일 하나(`image`)를 보냅니다. JPEG/PNG/WEBP만 가능하고 최대 10MB입니다.
+공통 요청 파트(`multipart/form-data`, 이미지 파일 하나 `image`, JPEG/PNG/WEBP만 가능, 최대 10MB):
 
 | 파트 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| image | File | O | 영수증 사진 |
+| image | File | O | 분석할 사진 |
 
-**Response** `200 OK` — `GlobalResponse<ReceiptScanResponse>`
+공통 **Response** `200 OK` — `GlobalResponse<ReceiptScanResponse>`
 
 ```json
 {
@@ -818,7 +816,13 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
         "unit": "g",
         "categoryNameGuess": "냉동식품",
         "matchedIngredientId": null,
-        "matchedCategoryId": null
+        "matchedCategoryId": null,
+        "matchedProcessedFood": {
+          "foodCd": "P113-...", "foodNm": "비비고 왕교자", "mfrNm": "CJ제일제당",
+          "referenceUnit": "g", "calories": 210, "carbohydrateG": 25.3, "proteinG": 8.1, "fatG": 8.7,
+          "sugarG": 1.2, "sodiumMg": 480.0, "fiberG": 1.5
+        },
+        "matchedDish": null
       }
     ]
   },
@@ -826,11 +830,27 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
 }
 ```
 
-- `matchedIngredientId`가 있으면 이미 등록된 식재료와 이름이 정확히 일치(또는 포함관계로 부분 일치)한 것 — 그대로 그 `ingredientId`로 3.1(재료 추가)을 호출하면 됩니다.
-- `matchedIngredientId`가 없으면 처음 보는 이름 — 4.4(식재료 등록)에 `name`/`categoryNameGuess`(그대로 `categoryName`으로 사용 가능)를 보내서 새로 만들고, 그 응답의 `id`로 3.1을 호출하세요. 이때도 이름이 같으면 내부적으로 기존 재료가 재사용되고, 완전히 새 이름이면 Claude가 영양정보까지 자동 추정합니다.
-- 영수증에 축약되거나 코드처럼 적힌 상품명(예: "국산돈목심600")은 Claude가 일반적으로 통용되는 이름(예: "돼지 목심")으로 풀어서 내려줍니다 — 완벽하지 않을 수 있으니 프론트에서 수정 가능하게 보여주는 걸 권장합니다.
+인식된 항목 하나는 다음 순서로 우선순위가 매겨진 매칭 결과를 가집니다(각 사진 인식 API 공통):
+
+1. **`matchedIngredientId`가 있으면** 이미 등록된 식재료와 이름이 일치한 것 — 그대로 그 `ingredientId`로 3.1(재료 추가)을 호출하면 됩니다.
+2. **없고 `matchedProcessedFood`(가공식품) 또는 `matchedDish`(음식/배달메뉴)가 있으면** 식약처 공식 데이터와 이름이 일치한 것 — 4.4(식재료 등록)에 `name`과 함께 그 객체의 `calories`/`carbohydrateG`/`proteinG`/`fatG`/`referenceUnit`을 **직접 입력값**으로 그대로 넘겨서 등록하세요(추가 AI 호출 없이 정확한 영양정보로 등록됨).
+3. **셋 다 없으면** 처음 보는 이름 — 4.4에 `name`/`categoryNameGuess`(그대로 `categoryName`으로 사용 가능)만 보내서 새로 만들거나(영양정보 없이 등록), `autoEstimateNutrition=true`를 함께 보내서 Claude에게 영양정보 추정을 요청하세요.
+
+어느 경우든 4.4 응답의 `id`를 3.1(재료 추가)에 넘기면 등록이 끝납니다.
 
 **에러**: 냉장고 없음(404), 이미지 없음(400), 이미지 10MB 초과(400), 지원 안 하는 이미지 형식(400), 인식 실패(502 — Claude 호출 실패/크레딧 부족 등)
+
+### 8.1 영수증 스캔 — `POST /fridges/{fridgeId}/receipts/scan`
+
+마트/편의점 영수증 사진을 분석합니다. 영수증에 축약되거나 코드처럼 적힌 상품명(예: "국산돈목심600")은 Claude가 일반적으로 통용되는 이름(예: "돼지 목심")으로 풀어서 내려줍니다 — 완벽하지 않을 수 있으니 프론트에서 수정 가능하게 보여주는 걸 권장합니다.
+
+### 8.2 주문내역(구매내역) 캡처 스캔 — `POST /fridges/{fridgeId}/receipts/scan-order-history`
+
+쿠팡/마켓컬리/네이버쇼핑 같은 온라인 쇼핑몰의 주문내역 화면 캡처를 분석합니다. 8.1과 완전히 같은 요청/응답 형태이고, 화면 형태(썸네일+상품명+수량+가격이 나열된 목록)에 맞춰 인식 프롬프트만 다릅니다.
+
+### 8.3 실물 상품 사진 인식 — `POST /fridges/{fridgeId}/products/scan`
+
+식품 포장/라벨을 직접 찍은 사진을 분석합니다. 브랜드명을 포함한 상품명을 읽어서 추출하고(예: "오뚜기 진라면 매운맛"), 포장에 중량/용량이 보이면 `quantityText`에 같이 담아줍니다. 한 사진에 여러 상품이 보이면 각각 별도 항목으로 인식합니다.
 
 ---
 
