@@ -722,11 +722,133 @@ YouTube Data API v3로 요리 영상을 검색합니다. **결과는 저장되�
 
 ---
 
+## 9. 식단 기록 API (`/meal-logs`, `/nutrition-goals`)
+
+**전부 인증 필요.** `MealType`은 `BREAKFAST`/`LUNCH`/`DINNER`/`MORNING_SNACK`/`AFTERNOON_SNACK`/`EVENING_SNACK` 6개(하루 상세 조회는 항상 이 순서로 6개 슬롯을 전부 내려줌). `MealLogType`은 `RECIPE`(저장된 레시피에서 선택) / `FREEFORM`(재료 직접입력) 둘 중 하나.
+
+### 9.1 식단 기록 추가 — `POST /meal-logs`
+
+`logType`에 따라 요청 형태가 다릅니다.
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| mealDate | String(yyyy-MM-dd) | O | 기록할 날짜 |
+| mealType | String | O | `BREAKFAST`/`LUNCH`/`DINNER`/`MORNING_SNACK`/`AFTERNOON_SNACK`/`EVENING_SNACK` |
+| logType | String | O | `RECIPE` 또는 `FREEFORM` |
+| recipeId | Long | logType=RECIPE일 때 필수 | 5번(레시피) API로 조회한 레시피 id |
+| servings | Number | X (기본 1) | 몇 인분 먹었는지 (레시피의 1인분 영양정보 × servings로 계산) |
+| items | Array | logType=FREEFORM일 때 필수(1개 이상) | `{ingredientId, quantity, unit}` 목록. **`ingredientId`는 4.4(식재료 등록)로 미리 만든/재사용한 id를 써야 함** — 이름으로 즉석 등록되지 않음 |
+
+레시피로 기록하는 예:
+```json
+{ "mealDate": "2026-09-17", "mealType": "LUNCH", "logType": "RECIPE", "recipeId": 12, "servings": 1 }
+```
+
+직접 입력으로 기록하는 예:
+```json
+{
+  "mealDate": "2026-09-17", "mealType": "MORNING_SNACK", "logType": "FREEFORM",
+  "items": [{ "ingredientId": 34, "quantity": 1, "unit": "개" }]
+}
+```
+
+**Response** `200 OK` — `GlobalResponse<MealLogResponse>` (`totalCalories`/`totalCarbohydrateG`/`totalProteinG`/`totalFatG`는 서버가 자동 계산. FREEFORM이면 `items`에 항목별 계산값도 함께 내려옴. 단위가 재료의 기준 단위와 다르면 — 예: 재료 기준은 g인데 quantity 단위가 "개" — 해당 항목의 영양정보는 null)
+
+**에러**: RECIPE인데 recipeId 없음(400), 레시피 없음(404), FREEFORM인데 items 없음(400), 식재료 없음(404)
+
+### 9.2 하루 식단 상세 조회 — `GET /meal-logs?date=`
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| date | O | 조회할 날짜 (yyyy-MM-dd) |
+
+**Response** `200 OK` — `GlobalResponse<DailyMealLogResponse>`
+
+```json
+{
+  "success": true,
+  "data": {
+    "date": "2026-09-17",
+    "totalCalories": 620, "totalCarbohydrateG": 55.0, "totalProteinG": 40.0, "totalFatG": 22.0,
+    "targetCalories": 1696, "targetCarbohydrateG": 233.2, "targetProteinG": 106.0, "targetFatG": 37.7,
+    "meals": [
+      { "mealType": "BREAKFAST", "totalCalories": 0, "totalCarbohydrateG": 0, "totalProteinG": 0, "totalFatG": 0, "logs": [] },
+      { "mealType": "LUNCH", "totalCalories": 620, "totalCarbohydrateG": 55.0, "totalProteinG": 40.0, "totalFatG": 22.0,
+        "logs": [{ "id": 1, "mealDate": "2026-09-17", "mealType": "LUNCH", "logType": "RECIPE", "recipeId": 12, "recipeTitle": "돼지목살 스테이크", "servings": 1, "totalCalories": 620, "totalCarbohydrateG": 55.0, "totalProteinG": 40.0, "totalFatG": 22.0, "items": [], "createdAt": "2026-09-17T12:31:00" }] },
+      { "mealType": "DINNER", "totalCalories": 0, "totalCarbohydrateG": 0, "totalProteinG": 0, "totalFatG": 0, "logs": [] },
+      { "mealType": "MORNING_SNACK", "totalCalories": 0, "totalCarbohydrateG": 0, "totalProteinG": 0, "totalFatG": 0, "logs": [] },
+      { "mealType": "AFTERNOON_SNACK", "totalCalories": 0, "totalCarbohydrateG": 0, "totalProteinG": 0, "totalFatG": 0, "logs": [] },
+      { "mealType": "EVENING_SNACK", "totalCalories": 0, "totalCarbohydrateG": 0, "totalProteinG": 0, "totalFatG": 0, "logs": [] }
+    ]
+  },
+  "message": null
+}
+```
+
+- `meals`는 항상 6개 전부 내려옵니다(기록 없는 슬롯도 `logs: []`로 포함) — 프론트에서 그대로 6줄 리스트로 렌더링하면 됩니다.
+- `target*` 필드는 그 날짜 기준으로 적용 중인 목표가 없으면 전부 `null`입니다(9.4 참고).
+
+### 9.3 달력 요약 조회 — `GET /meal-logs/calendar?startDate=&endDate=`
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| startDate | O | 조회 시작 날짜 |
+| endDate | O | 조회 종료 날짜 |
+
+**Response** `200 OK` — `GlobalResponse<List<DailyMealSummaryResponse>>`. **기록이 있는 날짜만** 포함됩니다(빈 날짜는 배열에 없음 — 프론트에서 달력 셀에 아무것도 안 그리면 됨).
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "date": "2026-09-15",
+      "totalCalories": 1180,
+      "meals": [
+        { "mealType": "LUNCH", "label": "돼지목살 구이" },
+        { "mealType": "DINNER", "label": "된장찌개" }
+      ]
+    }
+  ],
+  "message": null
+}
+```
+
+- `label`은 `logType=RECIPE`면 레시피 제목, `FREEFORM`이면 "첫 재료명 외 N개"(재료 1개면 그냥 이름).
+
+### 9.4 식단 기록 삭제 — `DELETE /meal-logs/{mealLogId}`
+
+본인이 기록한 것만 삭제 가능합니다. **에러**: 없거나 본인 기록이 아님(404)
+
+### 9.5 목표 영양정보 등록 — `POST /nutrition-goals`
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| targetCalories | Integer | X | 목표 칼로리(kcal) |
+| targetCarbohydrateG / targetProteinG / targetFatG | Number | X | 목표 탄/단/지(g) |
+| weightKg / heightCm | Number | X | 체중/키 (목표 자동계산에 참고용, 서버가 자동계산하진 않음 — 프론트/사용자가 직접 계산해서 넣거나 향후 추가) |
+| activityLevel | String | X | 활동량(자유 문자열, 예: "LOW"/"MEDIUM"/"HIGH") |
+| effectiveDate | String(yyyy-MM-dd) | X (기본 오늘) | 이 목표가 적용되기 시작하는 날짜 |
+
+새로 등록해도 기존 값을 덮어쓰지 않고 **이력으로 계속 쌓입니다** — 조회 시(9.2, 9.6) 항상 "그 날짜 기준으로 유효한(effectiveDate가 그 날짜 이하인 것 중 가장 최근) 목표"가 자동으로 선택됩니다. 그냥 목표를 갱신하고 싶으면 `effectiveDate`를 오늘로 새로 등록하면 됩니다.
+
+**Response** `200 OK` — `GlobalResponse<NutritionGoalResponse>`
+
+### 9.6 현재 목표 조회 — `GET /nutrition-goals/current?date=`
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| date | X (기본 오늘) | 이 날짜 기준으로 적용 중인 목표를 조회 |
+
+**Response** `200 OK` — `GlobalResponse<NutritionGoalResponse>`. **설정된 목표가 없으면 `data`가 `null`**(에러 아님) — 프론트에서 "목표를 설정해주세요" 화면으로 처리하면 됩니다.
+
+---
+
 ## 아직 구현되지 않은 것
 
 - 소셜 로그인(카카오/네이버/구글/애플), 이메일 인증, 비밀번호 재설정
 - **`FridgeItem`/레시피/장보기 API들의 멤버 권한 검증** — 현재 냉장고 존재 여부만 확인하고 요청자가 해당 냉장고 멤버인지는 확인하지 않음 (2번 냉장고 API는 이미 `FridgeMember` 기반 검증 적용됨)
 - 로그아웃 시 access token 즉시 무효화 (현재는 만료시간까지 유효한 stateless JWT 한계 그대로)
-- 식단 기록(MealLog) 관련 API
+- **식단 캘린더 프론트(cookgenieWeb)** — 백엔드 API(9번)는 완료, "오늘 상세"/"달력" 두 화면은 아직 미구현
 - 레시피 좋아요/저장(`likeCount`/`saveCount` 증가), 조회수 집계
 - **사진으로 재료 자동 등록 — 나머지 2단계**: 8번(영수증 스캔)에 이어서, (1) 쿠팡/네이버 등 구매내역 캡처 화면 인식, (2) 실물 상품 사진(포장지 등) 촬영으로 이름/카테고리 자동 인식 — 둘 다 8번과 같은 Claude 비전 + tool-use 패턴으로 확장 가능

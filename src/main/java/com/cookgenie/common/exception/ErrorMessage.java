@@ -36,6 +36,10 @@ public enum ErrorMessage {
     RECIPE_GENERATION_FAILED(HttpStatus.BAD_GATEWAY, "레시피 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
     YOUTUBE_VIDEO_NOT_FOUND(HttpStatus.NOT_FOUND, "유튜브 영상을 찾을 수 없습니다."),
 
+    MEAL_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "식단 기록을 찾을 수 없습니다."),
+    MEAL_LOG_RECIPE_REQUIRED(HttpStatus.BAD_REQUEST, "레시피로 기록하려면 recipeId가 필요합니다."),
+    MEAL_LOG_ITEMS_REQUIRED(HttpStatus.BAD_REQUEST, "직접 입력으로 기록하려면 재료 목록이 최소 1개 필요합니다."),
+
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "이미 존재하는 이메일입니다."),
     DUPLICATE_LOGIN_ID(HttpStatus.CONFLICT, "이미 존재하는 아이디입니다."),
     WITHDRAWN_USER(HttpStatus.CONFLICT, "탈퇴한 계정입니다."),

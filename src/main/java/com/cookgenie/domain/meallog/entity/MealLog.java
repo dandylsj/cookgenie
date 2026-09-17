@@ -67,4 +67,13 @@ public class MealLog extends BaseTimeEntity {
 
     @Column(name = "total_fat_g", precision = 5, scale = 1)
     private BigDecimal totalFatG;
+
+    /** FREEFORM 기록: 항목들을 저장한 뒤 합계를 채워 넣을 때 사용. */
+    public void updateTotals(Integer totalCalories, BigDecimal totalCarbohydrateG,
+                              BigDecimal totalProteinG, BigDecimal totalFatG) {
+        this.totalCalories = totalCalories;
+        this.totalCarbohydrateG = totalCarbohydrateG;
+        this.totalProteinG = totalProteinG;
+        this.totalFatG = totalFatG;
+    }
 }

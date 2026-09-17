@@ -60,7 +60,7 @@ COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 | Recipe | **1, 2단계 완료**: AI 레시피 생성(냉장고 재료 기반), 유튜브 레시피 검색/가져오기, 재료 기반 레시피 추천, 목록/상세/삭제. **각 재료의 냉장고 보유 여부(inFridge)도 계산** |
 | Receipt(영수증 인식) | **1/3단계 완료**: 영수증 사진 → Claude 비전으로 식재료 후보 추출(미리보기만, 저장은 안 함). 구매내역 캡처/실물 사진 인식은 미착수 |
 | Shopping(장보기) | 완료 — 냉장고별 장보기 리스트 추가/조회/체크/삭제, **쿠팡파트너스 연동 최저가 검색** |
-| MealLog / NutritionGoal | 엔티티만 있고 API 없음 |
+| MealLog(식단 기록) / NutritionGoal | **백엔드 완료** — 기록 추가(레시피 선택/재료 직접입력)/하루 상세 조회/달력 요약/삭제, 목표 칼로리·탄단지 설정/조회. **프론트는 미착수** |
 | 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 | 미구현 |
 
 전체 엔드포인트 상세 스펙은 **`docs/API.md`** 참고.
@@ -172,11 +172,24 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - 로컬 검증: PowerShell `System.Drawing`으로 가짜 영수증 이미지(품목 5개)를 만들어 스캔 → 실제로 항목/카테고리 추정 정상 인식 → 인식된 이름으로 `POST /ingredients`(영양정보 자동 추정까지) → `POST /fridges/{fridgeId}/items` 등록까지 end-to-end 확인 완료.
 - 겪은 삽질: Windows Git Bash curl에서 `-F "image=@경로;type=image/png"`처럼 `;type=`을 붙이면 `exit 26`으로 파일을 못 읽는다고 나옴(원인 불명, 다른 호스트로는 정상 업로드됨) — `;type=` 빼고 `-F "image=@경로"`만 쓰면 정상(위 "기술적 특이사항" 섹션에도 기록).
 
+## 식단 기록(MealLog) API + 목표 영양정보(NutritionGoal) API
+
+프론트에서 "오늘 하루 섭취량 상세 화면(삼성헬스 스타일)"과 "달력에서 날짜별 식사 요약 보기(캘린더 스타일)" 두 가지를 다 만들고 싶다는 요청으로 시작. `MealLog`/`MealLogItem`/`NutritionGoal` 엔티티와 리포지토리는 예전부터 있었지만 API가 없어서 미사용 상태였음 — 이번에 그 위에 서비스/컨트롤러 계층만 새로 얹음. **이번 작업은 백엔드까지만** — 프론트(두 화면) 구현은 아직 안 함, 다음 세션에서 이어가면 됨.
+
+- `MealType` enum을 기존 5개(`BREAKFAST`/`LUNCH`/`DINNER`/`SNACK`/`LATE_NIGHT`)에서 화면 목업(삼성헬스)에 맞춰 6개(`BREAKFAST`/`LUNCH`/`DINNER`/`MORNING_SNACK`/`AFTERNOON_SNACK`/`EVENING_SNACK`)로 교체함. 이 테이블이 API가 없어서 실제 데이터가 전혀 없었기 때문에(신규 기능이라 마이그레이션 이슈 없음) 값만 바로 바꿈.
+- `POST /meal-logs` — 식단 기록 추가. `logType=RECIPE`면 `recipeId`(+`servings`, 기본 1)로 기록하고 `Recipe`의 1인분 영양정보 × servings로 자동 계산. `logType=FREEFORM`이면 `items`(각 `ingredientId`+`quantity`+`unit`)로 기록하고, `FridgeItemResponse`와 동일한 방식(재료의 `NutritionInfo` 기준량 대비 비율 계산, 단위가 일치할 때만)으로 항목별 탄단지를 계산해 `MealLogItem`에 저장 + 합계를 `MealLog`에 저장. `FridgeItem`과 동일하게 **재료는 `ingredientId`로만 받음** — 이름으로 새 재료를 즉석 등록하지 않고, 프론트가 미리 `POST /ingredients`로 등록/재사용한 뒤 그 id를 넘기는 기존 설계를 그대로 따름.
+- `GET /meal-logs?date=` — 하루 상세 조회. 아침/점심/저녁/오전간식/오후간식/저녁간식 6개 슬롯을 **항상 전부 포함**해서 내려주고(기록 없는 슬롯은 빈 배열), 슬롯별/하루 전체 합계와 그날 기준 적용 중인 목표(`NutritionGoal`) 대비 값을 함께 내려줌(목표 미설정이면 target* 필드는 전부 null).
+- `GET /meal-logs/calendar?startDate=&endDate=` — 달력 범위 요약. 기록이 있는 날짜만 포함해서 날짜별 총 칼로리 + 식사별 대표 라벨(레시피면 제목, 직접입력이면 "재료명 외 N개")을 내려줌.
+- `DELETE /meal-logs/{id}` — 본인 기록만 삭제 가능.
+- `POST /nutrition-goals` — 목표 등록(칼로리/탄단지 + 체중/키/활동량, `effectiveDate` 생략 시 오늘부터 적용). 기존 값을 덮어쓰지 않고 새 row로 쌓이는 이력 구조(`NutritionGoalRepository.findFirstByUserIdAndEffectiveDateLessThanEqualOrderByEffectiveDateDesc`로 "그 날짜 기준 가장 최근 목표"를 조회) — 그래서 과거 날짜를 조회해도 그 시점에 실제 적용 중이던 목표가 나옴.
+- `GET /nutrition-goals/current?date=` — 목표 조회(date 생략 시 오늘). 설정된 목표가 없으면 data가 null(에러 아님).
+- `ErrorMessage`에 `MEAL_LOG_NOT_FOUND`/`MEAL_LOG_RECIPE_REQUIRED`/`MEAL_LOG_ITEMS_REQUIRED` 추가.
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
-- `FridgeItem`/`Recipe`/장보기 API들의 냉장고 멤버 권한 검증 (지금은 냉장고 존재 여부만 확인)
+- `FridgeItem`/`Recipe`/장보기/**식단 기록** API들의 냉장고·본인 권한 검증 강화 (지금은 냉장고 존재 여부 또는 최소한의 소유자 확인 정도만)
 - 프론트엔드의 "영양정보 동기화" 버튼 — 이제 없는 엔드포인트(`/ingredients/sync-raw-materials`)를 호출하고 있어서 프론트에서 제거 필요
 - 기존에 영양정보 없이 등록된 재료들(예: 계란/목살/양파/소금 등)을 일괄로 재추정하는 백필(backfill) 기능 (요청은 있었으나 미구현)
 - 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 / 로그아웃 시 JWT 즉시 무효화
-- 식단 기록(MealLog) API
+- **식단 캘린더 프론트 구현** (cookgenieWeb) — 위 MealLog API를 갖고 "오늘 상세" 화면(진행률 링 + 탄단지 바 + 6개 슬롯 리스트) + "달력" 화면(월별 그리드, 날짜별 식사 요약 배지) 두 가지를 만들어야 함
 - **사진으로 재료 등록 2/3단계**: 쿠팡/네이버 구매내역 캡처 화면 인식, 실물 상품 사진 인식(예: 만두 포장 사진 → 이름/카테고리 자동 인식) — 둘 다 방금 만든 `ClaudeReceiptClient`/비전 패턴을 그대로 확장하면 됨
