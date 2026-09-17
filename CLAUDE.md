@@ -200,6 +200,16 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - `GET /nutrition-goals/current?date=` — 목표 조회(date 생략 시 오늘). 설정된 목표가 없으면 data가 null(에러 아님).
 - `ErrorMessage`에 `MEAL_LOG_NOT_FOUND`/`MEAL_LOG_RECIPE_REQUIRED`/`MEAL_LOG_ITEMS_REQUIRED` 추가.
 
+## 설정 화면(닉네임 변경) + 냉장고 멤버 관리(목록/강퇴/탈퇴)
+
+프론트에 설정 화면이 아예 없었고(로그아웃만 TopBar에 있었음), 냉장고 공유 화면(`SharePage`)도 초대코드 발급/참여까지만 있고 "참여 중인 멤버 목록 보기·내보내기 기능은 아직 준비 중"이라는 안내문만 있던 상태였음. 사용자가 다른 앱 설정 화면 스크린샷을 참고로 보여주며 두 가지를 요청함: (1) 닉네임 변경 가능한 설정 화면 + 알림 기능은 나중에 네이티브 앱을 만들 때를 대비해 프론트에서 더미로만 (2) 냉장고 멤버 목록 조회 + 그룹장의 강퇴 + 멤버 본인의 탈퇴.
+
+- `PATCH /auth/nickname`(`NicknameUpdateRequest{nickname}`) 추가 — 닉네임은 유니크 제약이 없어서(이메일/아이디와 다름) 중복 검사 없이 그냥 바꿔줌. `User.updateNickname()` mutator 추가.
+- `GET /fridges/{fridgeId}/members` — 멤버 목록(`FridgeMemberResponse{userId, nickname, role, joinedAt}`), 소유자 먼저·참여일 순 정렬. 멤버라면 소유자/일반 멤버 누구나 조회 가능.
+- `DELETE /fridges/{fridgeId}/members/{userId}` — 멤버 강퇴, OWNER만 가능하고 자기 자신은 강퇴 못 함(`CANNOT_KICK_SELF`).
+- `DELETE /fridges/{fridgeId}/leave` — 본인 탈퇴. **OWNER는 탈퇴 불가**(`CANNOT_LEAVE_AS_OWNER`) — 소유권 이전 기능이 없어서 먼저 냉장고를 삭제하거나(2.4) 다른 사람에게 소유권을 넘기는 기능이 생길 때까지는 이 제약을 유지. `ErrorMessage`에 `FRIDGE_MEMBER_NOT_FOUND`/`CANNOT_KICK_SELF`/`CANNOT_LEAVE_AS_OWNER` 추가.
+- 프론트: `Sidebar`에 "설정"(`/settings`) 네비 항목 추가, 새 `SettingsPage`(닉네임 변경 폼 + 알림 토글은 `localStorage`에만 저장하는 순수 프론트 더미, 서버 호출 없음). `SharePage`에 멤버 목록 카드 추가(본인이 OWNER면 각 멤버 옆에 강퇴 버튼, 본인이 MEMBER면 "탈퇴하기" 버튼 — 자기 행에는 강퇴 버튼 대신 "나" 표시).
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
 - `FridgeItem`/`Recipe`/장보기/**식단 기록** API들의 냉장고·본인 권한 검증 강화 (지금은 냉장고 존재 여부 또는 최소한의 소유자 확인 정도만)

@@ -25,6 +25,9 @@ public enum ErrorMessage {
     INVALID_INVITE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않거나 만료된 초대코드입니다."),
     ALREADY_FRIDGE_MEMBER(HttpStatus.CONFLICT, "이미 참여하고 있는 냉장고입니다."),
     SHOPPING_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "장보기 항목을 찾을 수 없습니다."),
+    FRIDGE_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "냉장고 멤버를 찾을 수 없습니다."),
+    CANNOT_KICK_SELF(HttpStatus.BAD_REQUEST, "자기 자신은 강퇴할 수 없습니다."),
+    CANNOT_LEAVE_AS_OWNER(HttpStatus.BAD_REQUEST, "소유자는 냉장고를 탈퇴할 수 없습니다. 냉장고를 삭제하거나 다른 멤버에게 소유권을 넘겨주세요."),
 
     RECEIPT_IMAGE_REQUIRED(HttpStatus.BAD_REQUEST, "영수증 이미지가 필요합니다."),
     RECEIPT_IMAGE_TOO_LARGE(HttpStatus.BAD_REQUEST, "이미지 용량이 너무 큽니다(최대 10MB)."),

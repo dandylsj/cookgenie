@@ -4,6 +4,7 @@ import com.cookgenie.common.exception.CustomException;
 import com.cookgenie.common.exception.ErrorMessage;
 import com.cookgenie.common.util.JwtUtil;
 import com.cookgenie.domain.auth.dto.LoginRequest;
+import com.cookgenie.domain.auth.dto.NicknameUpdateRequest;
 import com.cookgenie.domain.auth.dto.RefreshTokenReissueRequest;
 import com.cookgenie.domain.auth.dto.SignupRequest;
 import com.cookgenie.domain.auth.dto.TokenResponse;
@@ -180,6 +181,19 @@ public class AuthService {
 
         User user = userRepository.findByLoginId(loginId)
                 .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
+
+        return new UserInfoResponse(user);
+    }
+
+    /** 닉네임 변경. 닉네임은 유니크 제약이 없어서 중복 검사는 하지 않는다. */
+    @Transactional
+    public UserInfoResponse updateNickname(String accessToken, NicknameUpdateRequest request) {
+        jwtUtil.validateToken(accessToken);
+        Long userId = jwtUtil.extractUserId(accessToken);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
+        user.updateNickname(request.getNickname());
 
         return new UserInfoResponse(user);
     }

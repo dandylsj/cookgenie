@@ -5,6 +5,7 @@ import com.cookgenie.common.util.JwtUtil;
 import com.cookgenie.domain.fridge.dto.FridgeCreateRequest;
 import com.cookgenie.domain.fridge.dto.FridgeInviteCodeResponse;
 import com.cookgenie.domain.fridge.dto.FridgeJoinRequest;
+import com.cookgenie.domain.fridge.dto.FridgeMemberResponse;
 import com.cookgenie.domain.fridge.dto.FridgeResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -91,6 +92,47 @@ public class FridgeController {
             @RequestHeader("Authorization") String accessToken, @Valid @RequestBody FridgeJoinRequest request) {
         return ResponseEntity.ok(GlobalResponse.success(
                 fridgeService.joinFridgeByInviteCode(resolveUserId(accessToken), request.getInviteCode())));
+    }
+
+    /** GET /fridges/{fridgeId}/members - 냉장고 멤버 목록 조회 (멤버만 가능) */
+    @Operation(
+            summary = "냉장고 멤버 목록 조회",
+            description = "냉장고에 속한 멤버 목록(유저ID/닉네임/역할/참여일)을 조회합니다. "
+                    + "소유자가 먼저, 그다음 참여일 순으로 정렬됩니다. 해당 냉장고의 멤버가 아니면 접근이 거부됩니다."
+    )
+    @GetMapping("/{fridgeId}/members")
+    public ResponseEntity<GlobalResponse<List<FridgeMemberResponse>>> getMembers(
+            @RequestHeader("Authorization") String accessToken,
+            @Parameter(description = "냉장고 ID") @PathVariable Long fridgeId) {
+        return ResponseEntity.ok(GlobalResponse.success(fridgeService.getMembers(resolveUserId(accessToken), fridgeId)));
+    }
+
+    /** DELETE /fridges/{fridgeId}/members/{userId} - 멤버 강퇴 (OWNER만 가능) */
+    @Operation(
+            summary = "멤버 강퇴",
+            description = "냉장고에서 멤버를 강퇴합니다. OWNER만 할 수 있고, 자기 자신은 강퇴할 수 없습니다."
+    )
+    @DeleteMapping("/{fridgeId}/members/{userId}")
+    public ResponseEntity<Void> kickMember(
+            @RequestHeader("Authorization") String accessToken,
+            @Parameter(description = "냉장고 ID") @PathVariable Long fridgeId,
+            @Parameter(description = "강퇴할 유저 ID") @PathVariable Long userId) {
+        fridgeService.kickMember(resolveUserId(accessToken), fridgeId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** DELETE /fridges/{fridgeId}/leave - 냉장고 탈퇴 (본인) */
+    @Operation(
+            summary = "냉장고 탈퇴",
+            description = "본인이 냉장고 멤버에서 탈퇴합니다. OWNER는 탈퇴할 수 없습니다(먼저 냉장고를 삭제하거나 "
+                    + "다른 멤버에게 소유권을 넘겨야 합니다 - 소유권 이전은 아직 지원하지 않습니다)."
+    )
+    @DeleteMapping("/{fridgeId}/leave")
+    public ResponseEntity<Void> leaveFridge(
+            @RequestHeader("Authorization") String accessToken,
+            @Parameter(description = "냉장고 ID") @PathVariable Long fridgeId) {
+        fridgeService.leaveFridge(resolveUserId(accessToken), fridgeId);
+        return ResponseEntity.noContent().build();
     }
 
     /** Authorization 헤더에서 "Bearer " 접두사를 떼어내고 JWT를 검증한 뒤 userId를 추출한다. */

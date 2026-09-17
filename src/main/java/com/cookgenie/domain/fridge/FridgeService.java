@@ -4,6 +4,7 @@ import com.cookgenie.common.exception.CustomException;
 import com.cookgenie.common.exception.ErrorMessage;
 import com.cookgenie.domain.fridge.dto.FridgeCreateRequest;
 import com.cookgenie.domain.fridge.dto.FridgeInviteCodeResponse;
+import com.cookgenie.domain.fridge.dto.FridgeMemberResponse;
 import com.cookgenie.domain.fridge.dto.FridgeResponse;
 import com.cookgenie.domain.fridge.entity.Fridge;
 import com.cookgenie.domain.fridge.entity.FridgeMember;
@@ -15,6 +16,7 @@ import com.cookgenie.domain.shopping.repository.ShoppingItemRepository;
 import com.cookgenie.domain.user.entity.User;
 import com.cookgenie.domain.user.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import lombok.RequiredArgsConstructor;
@@ -132,6 +134,49 @@ public class FridgeService {
         );
 
         return new FridgeResponse(fridge, member.getRole());
+    }
+
+    /** 냉장고 멤버 목록 조회. 소유자가 먼저 오고 그다음 참여일 순으로 정렬한다. 요청자가 멤버가 아니면 접근을 거부한다. */
+    @Transactional(readOnly = true)
+    public List<FridgeMemberResponse> getMembers(Long userId, Long fridgeId) {
+        fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.ACCESS_DENIED));
+
+        return fridgeMemberRepository.findByFridgeId(fridgeId).stream()
+                .sorted(Comparator
+                        .comparing((FridgeMember m) -> m.getRole() == FridgeRole.OWNER ? 0 : 1)
+                        .thenComparing(FridgeMember::getJoinedAt))
+                .map(FridgeMemberResponse::new)
+                .toList();
+    }
+
+    /** 멤버 강퇴. OWNER만 할 수 있고, 자기 자신은 강퇴할 수 없다. */
+    @Transactional
+    public void kickMember(Long userId, Long fridgeId, Long targetUserId) {
+        FridgeMember requester = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.ACCESS_DENIED));
+        if (requester.getRole() != FridgeRole.OWNER) {
+            throw new CustomException(ErrorMessage.ACCESS_DENIED);
+        }
+        if (userId.equals(targetUserId)) {
+            throw new CustomException(ErrorMessage.CANNOT_KICK_SELF);
+        }
+
+        FridgeMember target = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, targetUserId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.FRIDGE_MEMBER_NOT_FOUND));
+        fridgeMemberRepository.delete(target);
+    }
+
+    /** 냉장고 탈퇴(본인). OWNER는 탈퇴할 수 없다 - 먼저 냉장고를 삭제하거나 다른 멤버에게 소유권을 넘겨야 한다. */
+    @Transactional
+    public void leaveFridge(Long userId, Long fridgeId) {
+        FridgeMember member = fridgeMemberRepository.findByFridgeIdAndUserId(fridgeId, userId)
+                .orElseThrow(() -> new CustomException(ErrorMessage.ACCESS_DENIED));
+        if (member.getRole() == FridgeRole.OWNER) {
+            throw new CustomException(ErrorMessage.CANNOT_LEAVE_AS_OWNER);
+        }
+
+        fridgeMemberRepository.delete(member);
     }
 
     /** 현재 유효한(만료 안 된) 다른 냉장고의 코드와 겹치지 않는 4자리 숫자 코드를 만든다. */
