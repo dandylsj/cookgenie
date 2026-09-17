@@ -83,8 +83,11 @@ public class MfdsProcessedFoodClient {
         JsonNode header = root.path("response").path("header");
         String resultCode = header.path("resultCode").asString("");
         if (!"00".equals(resultCode)) {
-            log.warn("[식약처 가공식품 검색] resultCode={} resultMsg={} keyword={}",
-                    resultCode, header.path("resultMsg").asString(""), keyword);
+            // data.go.kr는 서비스키/게이트웨이 에러일 때 response.header가 아니라 cmmMsgHeader(returnReasonCode/
+            // returnAuthMsg) 같은 완전히 다른 형태로 응답하는 경우가 있음 - 원인을 바로 알 수 있게 원본을 로그에 남긴다.
+            log.warn("[식약처 가공식품 검색] resultCode={} resultMsg={} keyword={} rawBody={}",
+                    resultCode, header.path("resultMsg").asString(""), keyword,
+                    body.length() > 500 ? body.substring(0, 500) : body);
             return List.of();
         }
 
