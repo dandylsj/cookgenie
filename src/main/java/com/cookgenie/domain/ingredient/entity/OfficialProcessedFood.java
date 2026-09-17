@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -20,10 +21,18 @@ import lombok.NoArgsConstructor;
  * "실온"→"닭"처럼 좁혀가며 찾는 UX를 만들려면 우리 쪽에 데이터를 미리 복사해두고 LIKE 검색을 해야 한다.
  * {@link com.cookgenie.domain.ingredient.OfficialProcessedFoodSyncService}가 foodNm 필터 없이 페이지를
  * 넘기면서 API 전체를 이 테이블로 복사한다. 값은 전부 100g/100ml 기준으로 정규화되어 저장된다.
+ *
+ * <p><b>foodCd는 상품별 고유 코드가 아니다</b> - "대표식품코드" 체계라 서로 다른 제조사/상품이 같은
+ * foodCd를 공유하는 경우가 흔하다(실측으로 확인됨: foodCd만으로 유니크 제약을 걸었더니 59만 행이
+ * 24만5천여 건으로 줄었고, 재실행해도 더 안 늘어남 - 즉 페이지네이션이 불안정한 게 아니라 서로 다른
+ * 상품이 같은 foodCd를 갖고 있어서 계속 "이미 있음"으로 걸러진 것). 그래서 유니크 제약은 foodCd
+ * 하나가 아니라 (food_cd, food_nm, mfr_nm) 조합으로 건다.
  */
 @Entity
-@Table(name = "official_processed_foods", indexes = {
-        @Index(name = "idx_official_processed_food_code", columnList = "food_cd", unique = true),
+@Table(name = "official_processed_foods", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_official_processed_food_cd_nm_mfr", columnNames = {"food_cd", "food_nm", "mfr_nm"})
+}, indexes = {
+        @Index(name = "idx_official_processed_food_code", columnList = "food_cd"),
         @Index(name = "idx_official_processed_food_name", columnList = "food_nm"),
         @Index(name = "idx_official_processed_food_mfr", columnList = "mfr_nm")
 })

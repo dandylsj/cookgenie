@@ -6,18 +6,17 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 public interface OfficialProcessedFoodRepository extends JpaRepository<OfficialProcessedFood, Long> {
 
     Optional<OfficialProcessedFood> findFirstByFoodNm(String foodNm);
 
-    boolean existsByFoodCd(String foodCd);
-
     List<OfficialProcessedFood> findByFoodNmContainingOrMfrNmContaining(String foodNmKeyword, String mfrNmKeyword, Pageable pageable);
 
-    /** 이미 저장된 foodCd만 골라낸다 - 정부 API 페이지 사이에 같은 항목이 겹쳐서 나오는 경우가 있어서 배치 저장 전에 걸러낸다. */
-    @Query("select o.foodCd from OfficialProcessedFood o where o.foodCd in :foodCds")
-    List<String> findExistingFoodCds(@Param("foodCds") Collection<String> foodCds);
+    /**
+     * foodCd가 겹치는 후보들을 미리 가져와서, 배치 저장 전에 (foodCd, foodNm, mfrNm) 조합으로 이미 저장된
+     * 항목을 걸러낸다. foodCd 하나만으로는 안 된다 - "대표식품코드" 체계라 서로 다른 제조사/상품이 같은
+     * foodCd를 공유하는 경우가 흔해서, foodCd만 보고 걸러내면 실제로 다른 상품을 중복으로 오인해 버린다.
+     */
+    List<OfficialProcessedFood> findByFoodCdIn(Collection<String> foodCds);
 }
