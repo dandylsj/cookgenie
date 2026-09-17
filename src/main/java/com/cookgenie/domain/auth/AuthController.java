@@ -2,6 +2,7 @@ package com.cookgenie.domain.auth;
 
 import com.cookgenie.common.model.response.GlobalResponse;
 import com.cookgenie.domain.auth.dto.LoginRequest;
+import com.cookgenie.domain.auth.dto.NicknameUpdateRequest;
 import com.cookgenie.domain.auth.dto.RefreshTokenReissueRequest;
 import com.cookgenie.domain.auth.dto.SignupRequest;
 import com.cookgenie.domain.auth.dto.TokenResponse;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -80,6 +82,14 @@ public class AuthController {
     @GetMapping("/profile")
     public ResponseEntity<GlobalResponse<UserInfoResponse>> profile(@RequestHeader("Authorization") String accessToken) {
         return ResponseEntity.ok(GlobalResponse.success(authService.getUserInfo(resolveToken(accessToken))));
+    }
+
+    /** PATCH /auth/nickname - 닉네임 변경 */
+    @Operation(summary = "닉네임 변경", description = "로그인한 사용자 본인의 닉네임을 변경합니다.")
+    @PatchMapping("/nickname")
+    public ResponseEntity<GlobalResponse<UserInfoResponse>> updateNickname(
+            @RequestHeader("Authorization") String accessToken, @Valid @RequestBody NicknameUpdateRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(authService.updateNickname(resolveToken(accessToken), request)));
     }
 
     /** POST /auth/logout - 로그아웃 (저장된 refresh token 삭제) */

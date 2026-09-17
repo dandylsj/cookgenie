@@ -189,6 +189,22 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 ---
 
+### 1.9 닉네임 변경 — `PATCH /auth/nickname`
+
+**인증 필요**
+
+로그인한 사용자 본인의 닉네임을 변경합니다. 닉네임은 유니크 제약이 없어서 다른 사용자와 중복되어도 됩니다.
+
+**Request Body** (`NicknameUpdateRequest`)
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| nickname | String | O (최대 50자) |
+
+**Response** `200 OK` — `GlobalResponse<UserInfoResponse>` (1.6과 동일한 형태, 변경된 닉네임 포함)
+
+---
+
 ## 2. 냉장고 API (`/fridges`)
 
 **전부 인증 필요.**
@@ -264,6 +280,43 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 **Response** `200 OK` — `GlobalResponse<FridgeResponse>` (`myRole: "MEMBER"`)
 
 **에러**: 유효하지 않거나 만료된 코드(400), 이미 참여 중인 냉장고(409)
+
+---
+
+### 2.7 냉장고 멤버 목록 조회 — `GET /fridges/{fridgeId}/members`
+
+냉장고에 속한 멤버 목록을 반환합니다. 소유자가 먼저, 그다음 참여일(`joinedAt`) 순으로 정렬됩니다. 해당 냉장고의 멤버라면 소유자/일반 멤버 누구나 조회할 수 있습니다.
+
+**Response** `200 OK` — `GlobalResponse<List<FridgeMemberResponse>>`
+
+| 필드 | 타입 |
+|---|---|
+| userId | Long |
+| nickname | String |
+| role | String (`OWNER` \| `MEMBER`) |
+| joinedAt | LocalDateTime |
+
+**에러**: 접근 권한 없음(403) — 요청자가 해당 냉장고의 멤버가 아닌 경우
+
+---
+
+### 2.8 멤버 강퇴 — `DELETE /fridges/{fridgeId}/members/{userId}`
+
+냉장고에서 특정 멤버를 강퇴합니다. **OWNER만 가능**하고, 자기 자신을 대상으로 호출할 수 없습니다.
+
+**Response** `204 No Content` (바디 없음)
+
+**에러**: 접근 권한 없음(403) — 멤버가 아니거나 `OWNER`가 아닌 경우, 자기 자신을 강퇴 시도(400), 대상 멤버를 찾을 수 없음(404)
+
+---
+
+### 2.9 냉장고 탈퇴 — `DELETE /fridges/{fridgeId}/leave`
+
+본인이 그 냉장고의 멤버에서 탈퇴합니다. **`OWNER`는 탈퇴할 수 없습니다** — 먼저 냉장고를 삭제(2.4)하거나 다른 멤버에게 소유권을 넘겨야 합니다(소유권 이전 기능은 아직 없음).
+
+**Response** `204 No Content` (바디 없음)
+
+**에러**: 접근 권한 없음(403) — 멤버가 아닌 경우, `OWNER`가 탈퇴를 시도(400)
 
 ---
 

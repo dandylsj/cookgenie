@@ -64,6 +64,10 @@ public class User extends BaseTimeEntity {
         this.password = null;
     }
 
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
     public boolean isGuest() {
         return GUEST_PROVIDER.equals(this.provider);
     }
