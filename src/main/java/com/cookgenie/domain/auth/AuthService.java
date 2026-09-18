@@ -3,6 +3,7 @@ package com.cookgenie.domain.auth;
 import com.cookgenie.common.exception.CustomException;
 import com.cookgenie.common.exception.ErrorMessage;
 import com.cookgenie.common.util.JwtUtil;
+import com.cookgenie.domain.auth.dto.GoogleLoginRequest;
 import com.cookgenie.domain.auth.dto.KakaoLoginRequest;
 import com.cookgenie.domain.auth.dto.LoginRequest;
 import com.cookgenie.domain.auth.dto.NicknameUpdateRequest;
@@ -12,6 +13,8 @@ import com.cookgenie.domain.auth.dto.TokenResponse;
 import com.cookgenie.domain.auth.dto.UserInfoResponse;
 import com.cookgenie.domain.auth.dto.WithdrawRequest;
 import com.cookgenie.domain.auth.entity.RefreshToken;
+import com.cookgenie.domain.auth.external.GoogleAuthClient;
+import com.cookgenie.domain.auth.external.GoogleUserInfo;
 import com.cookgenie.domain.auth.external.KakaoAuthClient;
 import com.cookgenie.domain.auth.external.KakaoUserInfo;
 import com.cookgenie.domain.auth.repository.RefreshTokenRepository;
@@ -34,6 +37,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final RefreshTokenRepository refreshTokenRepository;
     private final KakaoAuthClient kakaoAuthClient;
+    private final GoogleAuthClient googleAuthClient;
 
     /** 회원가입. 이메일/아이디 중복, 소셜 계정 여부를 확인한 뒤 비밀번호를 BCrypt로 해싱해 저장하고 토큰을 발급한다. */
     @Transactional
@@ -142,6 +146,31 @@ public class AuthService {
                         .email("kakao_" + info.id() + "@cookgenie.social")
                         .nickname(info.nickname() != null && !info.nickname().isBlank() ? info.nickname() : "카카오 사용자")
                         .provider(User.KAKAO_PROVIDER)
+                        .providerId(info.id())
+                        .build()));
+
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            throw new CustomException(ErrorMessage.WITHDRAWN_USER);
+        }
+
+        return issueTokens(user);
+    }
+
+    /**
+     * 구글 로그인. 인가 코드를 구글 액세스 토큰으로 교환해 사용자 정보를 받아온 뒤, provider="GOOGLE" +
+     * providerId(구글 고유 id, sub)로 기존 계정을 찾거나 새로 만든다. 구글은 이메일을 항상 제공하지만,
+     * 카카오와 동일한 이유(이메일 소유 확인 없이 기존 로컬 계정에 연결되는 보안 문제)로 그 이메일을 그대로
+     * 쓰지 않고 내부용 고유 이메일을 만들어 저장한다.
+     */
+    @Transactional
+    public TokenResponse googleLogin(GoogleLoginRequest request) {
+        GoogleUserInfo info = googleAuthClient.getUserInfo(request.getCode(), request.getRedirectUri());
+
+        User user = userRepository.findByProviderAndProviderId(User.GOOGLE_PROVIDER, info.id())
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .email("google_" + info.id() + "@cookgenie.social")
+                        .nickname(info.nickname() != null && !info.nickname().isBlank() ? info.nickname() : "구글 사용자")
+                        .provider(User.GOOGLE_PROVIDER)
                         .providerId(info.id())
                         .build()));
 
