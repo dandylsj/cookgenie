@@ -26,6 +26,9 @@ public class User extends BaseTimeEntity {
     /** 회원가입 없이 바로 시작하는 게스트 계정의 provider 값. */
     public static final String GUEST_PROVIDER = "GUEST";
 
+    /** 카카오 소셜 로그인 계정의 provider 값. */
+    public static final String KAKAO_PROVIDER = "KAKAO";
+
     /** 게스트 계정을 정식 회원으로 전환하지 않았을 때 보관되는 기간(일). GuestCleanupScheduler가 이 값으로 삭제 대상을 정한다. */
     public static final int GUEST_RETENTION_DAYS = 3;
 

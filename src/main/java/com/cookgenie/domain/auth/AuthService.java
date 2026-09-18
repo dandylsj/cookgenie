@@ -3,6 +3,7 @@ package com.cookgenie.domain.auth;
 import com.cookgenie.common.exception.CustomException;
 import com.cookgenie.common.exception.ErrorMessage;
 import com.cookgenie.common.util.JwtUtil;
+import com.cookgenie.domain.auth.dto.KakaoLoginRequest;
 import com.cookgenie.domain.auth.dto.LoginRequest;
 import com.cookgenie.domain.auth.dto.NicknameUpdateRequest;
 import com.cookgenie.domain.auth.dto.RefreshTokenReissueRequest;
@@ -11,6 +12,8 @@ import com.cookgenie.domain.auth.dto.TokenResponse;
 import com.cookgenie.domain.auth.dto.UserInfoResponse;
 import com.cookgenie.domain.auth.dto.WithdrawRequest;
 import com.cookgenie.domain.auth.entity.RefreshToken;
+import com.cookgenie.domain.auth.external.KakaoAuthClient;
+import com.cookgenie.domain.auth.external.KakaoUserInfo;
 import com.cookgenie.domain.auth.repository.RefreshTokenRepository;
 import com.cookgenie.domain.user.entity.User;
 import com.cookgenie.domain.user.entity.UserStatus;
@@ -30,6 +33,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final KakaoAuthClient kakaoAuthClient;
 
     /** 회원가입. 이메일/아이디 중복, 소셜 계정 여부를 확인한 뒤 비밀번호를 BCrypt로 해싱해 저장하고 토큰을 발급한다. */
     @Transactional
@@ -118,6 +122,31 @@ public class AuthService {
         }
         if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new CustomException(ErrorMessage.INVALID_PASSWORD);
+        }
+
+        return issueTokens(user);
+    }
+
+    /**
+     * 카카오 로그인. 인가 코드를 카카오 액세스 토큰으로 교환해 사용자 정보를 받아온 뒤, provider="KAKAO" +
+     * providerId(카카오 고유 id)로 기존 계정을 찾거나 새로 만든다. 카카오 이메일은 별도 비즈 심사 없이는
+     * 대부분 제공되지 않고, 로컬 회원가입 계정과 이메일로 자동 연결하는 것도 보안상 위험해서(이메일 소유
+     * 확인 없이 계정을 가로챌 수 있음) 시도하지 않음 - 대신 내부용 고유 이메일을 만들어 저장한다.
+     */
+    @Transactional
+    public TokenResponse kakaoLogin(KakaoLoginRequest request) {
+        KakaoUserInfo info = kakaoAuthClient.getUserInfo(request.getCode(), request.getRedirectUri());
+
+        User user = userRepository.findByProviderAndProviderId(User.KAKAO_PROVIDER, info.id())
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .email("kakao_" + info.id() + "@cookgenie.social")
+                        .nickname(info.nickname() != null && !info.nickname().isBlank() ? info.nickname() : "카카오 사용자")
+                        .provider(User.KAKAO_PROVIDER)
+                        .providerId(info.id())
+                        .build()));
+
+        if (user.getStatus() == UserStatus.WITHDRAWN) {
+            throw new CustomException(ErrorMessage.WITHDRAWN_USER);
         }
 
         return issueTokens(user);

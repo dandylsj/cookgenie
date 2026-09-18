@@ -1,6 +1,7 @@
 package com.cookgenie.domain.auth;
 
 import com.cookgenie.common.model.response.GlobalResponse;
+import com.cookgenie.domain.auth.dto.KakaoLoginRequest;
 import com.cookgenie.domain.auth.dto.LoginRequest;
 import com.cookgenie.domain.auth.dto.NicknameUpdateRequest;
 import com.cookgenie.domain.auth.dto.RefreshTokenReissueRequest;
@@ -68,6 +69,17 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<GlobalResponse<TokenResponse>> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(GlobalResponse.success(authService.login(request)));
+    }
+
+    /** POST /auth/kakao - 카카오 로그인 (인가 코드 방식) */
+    @Operation(
+            summary = "카카오 로그인",
+            description = "카카오 인가 코드(code)와 그 코드를 발급받을 때 쓴 redirectUri를 받아 카카오 액세스 토큰으로 "
+                    + "교환하고, 사용자 정보로 기존 계정을 찾거나 새로 만들어 access/refresh 토큰을 발급합니다."
+    )
+    @PostMapping("/kakao")
+    public ResponseEntity<GlobalResponse<TokenResponse>> kakaoLogin(@Valid @RequestBody KakaoLoginRequest request) {
+        return ResponseEntity.ok(GlobalResponse.success(authService.kakaoLogin(request)));
     }
 
     /** POST /auth/reissue - refreshToken으로 access/refresh 토큰 재발급 */

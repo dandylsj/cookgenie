@@ -54,3 +54,8 @@ coupang:
 mfds:
   processed-food-api-key: ${MFDS_PROCESSED_FOOD_API_KEY}
   dish-api-key: ${MFDS_DISH_API_KEY}
+
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY}
+  # 카카오 디벨로퍼스에서 "Client Secret"을 활성화한 경우에만 필요 - 기본은 비활성 상태라 비워둬도 됨.
+  client-secret: ${KAKAO_CLIENT_SECRET:}
