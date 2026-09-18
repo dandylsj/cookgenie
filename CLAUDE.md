@@ -28,9 +28,11 @@ COUPANG_ACCESS_KEY: 쿠팡파트너스에서 발급받은 액세스 키
 COUPANG_SECRET_KEY: 쿠팡파트너스에서 발급받은 시크릿 키
 MFDS_PROCESSED_FOOD_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분정보(가공식품)" 서비스키(디코딩 키)
 MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분정보(음식)" 서비스키(디코딩 키) — 계정이 같으면 위 키와 같은 값일 수 있음
+KAKAO_REST_API_KEY: 카카오 디벨로퍼스에서 발급받은 REST API 키
+KAKAO_CLIENT_SECRET: 카카오 디벨로퍼스에서 "Client Secret"을 활성화했을 때만 필요, 기본은 비워둬도 됨
 ```
 
-이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`/`KAKAO_REST_API_KEY`/`KAKAO_CLIENT_SECRET`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
 
 `YOUTUBE_API_KEY`는 Google Cloud Console에서 **YouTube Data API v3**를 활성화하고 발급받은 API 키입니다(무료지만 일일 할당량 있음). 유튜브 레시피 검색/가져오기 기능에 쓰입니다.
 
@@ -40,9 +42,11 @@ MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분
 
 `MFDS_DISH_API_KEY`는 같은 data.go.kr 계정으로 "전국통합식품영양성분정보(음식)표준데이터"를 별도로 활용신청해서 받는 서비스키입니다(가공식품과 완전히 다른 API/데이터셋이라 활용신청 자체는 따로 필요 - 다만 data.go.kr 계정당 서비스키가 보통 하나라서 값 자체는 위 `MFDS_PROCESSED_FOOD_API_KEY`와 같을 수 있음). 마찬가지로 디코딩 키를 넣어야 하고, 없거나 틀려도 크래시 없이 해당 조회만 실패함.
 
+`KAKAO_REST_API_KEY`는 [카카오 디벨로퍼스](https://developers.kakao.com)에서 앱을 만들면 발급되는 REST API 키입니다(카카오 로그인의 OAuth `client_id`로 그대로 씀). 이 키가 없으면 앱 기동 자체가 실패함(다른 외부 API 키들과 달리 `${KAKAO_REST_API_KEY}`에 기본값이 없어서) — 로컬에서 카카오 로그인을 안 쓸 거면 아무 문자열이나 넣어두면 기동은 되고 `/auth/kakao` 호출만 실패함. `KAKAO_CLIENT_SECRET`은 콘솔의 "카카오 로그인 > 보안 > Client Secret"을 활성화한 경우에만 필요하고(`${KAKAO_CLIENT_SECRET:}`로 기본값이 빈 문자열이라 안 넣어도 기동은 됨), 활성화했는데 안 보내면 토큰 교환이 거부됨.
+
 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USERNAME`은 로컬 기본값(`localhost`/`3306`/`cookgenie`/`root`)이 있어서 별도 설정 없이 그대로 씁니다. 로컬 MySQL은 `sql/create_database.sql`로 `cookgenie` DB만 만들면 테이블은 앱 기동 시 자동 생성됩니다.
 
-**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `MFDS_DISH_API_KEY`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** (없어도 크래시는 안 나고 해당 조회만 안 됨).
+**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `MFDS_DISH_API_KEY`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`/`KAKAO_REST_API_KEY`/`KAKAO_CLIENT_SECRET`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** — `KAKAO_REST_API_KEY`는 다른 키들과 달리 **없으면 앱 기동 자체가 실패**하므로(기본값 없는 필수 프로퍼티) 반드시 등록해야 함.
 
 ### 지나간 사고: application.yml이 통째로 배포에서 빠져있었던 문제
 
@@ -59,7 +63,7 @@ MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분
 
 | 도메인 | 상태 |
 |---|---|
-| Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필 + **게스트 시작/게스트→정식회원 전환**. JWT, Spring Security |
+| Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필 + **게스트 시작/게스트→정식회원 전환** + **카카오 로그인**. JWT, Spring Security |
 | Fridge | 완료 — 생성/목록/단건조회/삭제(OWNER만) + **4자리 초대코드 발급/참여로 공유** |
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
@@ -67,7 +71,7 @@ MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분
 | Receipt/Product(사진 인식) | **3/3단계 완료**: 영수증 사진 / 온라인 쇼핑몰 주문내역 캡처 / 실물 상품 사진 → Claude 비전으로 식재료 후보 추출(미리보기만, 저장은 안 함), **기존 재료·가공식품·음식 공식 데이터와 자동 매칭**까지 포함 |
 | Shopping(장보기) | 완료 — 냉장고별 장보기 리스트 추가/조회/체크/삭제, **쿠팡파트너스 연동 최저가 검색** |
 | MealLog(식단 기록) / NutritionGoal | **백엔드 완료** — 기록 추가(레시피 선택/재료 직접입력)/하루 상세 조회/달력 요약/삭제, 목표 칼로리·탄단지 설정/조회. **프론트는 미착수** |
-| 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 | 미구현 |
+| 소셜 로그인(구글) / 이메일 인증 / 비밀번호 재설정 | 미구현 (카카오는 완료, 아래 참고) |
 
 전체 엔드포인트 상세 스펙은 **`docs/API.md`** 참고.
 
@@ -164,6 +168,20 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 - **프론트 공지용 정보**: `GET /auth/profile`(`UserInfoResponse`)에 `guest`(boolean)와 `guestExpiresAt`(게스트일 때만 값 있음 = `createdAt + 3일`) 필드를 추가함. 프론트에서 게스트 로그인 직후 또는 프로필 조회 시 이 값으로 "n일 후 데이터가 삭제됩니다 — 지금 회원가입하고 이어가기" 같은 배너를 띄우면 됨.
 - 로컬에서 게스트 생성 → 냉장고 생성 → 게스트→회원 전환 → 새 토큰으로 로그인까지 curl로 end-to-end 검증 완료.
 
+## 카카오 소셜 로그인
+
+웹/앱 양쪽에서 재사용 가능하도록 설계함(모바일 앱을 나중에 만들 때도 이 백엔드를 그대로 재사용 — 클라이언트가 카카오 access token/인가 코드를 얻는 방법만 플랫폼별로 다르고, 그 이후 서버 검증/JWT 발급 로직은 동일함).
+
+- **인가 코드(authorization code) 방식**으로 구현함(카카오 JS SDK 없이도 동작 — REST API 키만 있으면 됨). 흐름: 프론트가 사용자를 `https://kauth.kakao.com/oauth/authorize?client_id={REST_API_KEY}&redirect_uri=...&response_type=code`로 보냄 → 카카오 로그인/동의 후 그 `redirect_uri`로 `code`와 함께 리다이렉트됨 → 프론트가 `code`+`redirectUri`를 `POST /auth/kakao`로 보냄 → 백엔드가 카카오 토큰 엔드포인트로 `code`를 액세스 토큰으로 교환하고, 그 토큰으로 `/v2/user/me`를 호출해 사용자 정보를 받아옴.
+- 새 클라이언트 `domain/auth/external/KakaoAuthClient`(토큰 교환 + 사용자 조회, 실패하면 `ErrorMessage.KAKAO_LOGIN_FAILED` 던짐 — 다른 외부 클라이언트들(Claude/유튜브/쿠팡)과 달리 로그인 자체가 목적이라 "실패 시 빈 값 반환" 패턴을 안 쓰고 예외를 던짐)과 `domain/auth/external/KakaoUserInfo`(id/nickname record).
+- `AuthService.kakaoLogin()`이 `User.findByProviderAndProviderId("KAKAO", kakaoId)`로 기존 계정을 찾거나, 없으면 새로 만듦(이미 게스트/소셜 계정 로직에서 쓰던 `provider`/`providerId` 컬럼과 `findByProviderAndProviderId` 리포지토리 메서드를 그대로 재사용 — 이 컬럼들이 원래 소셜로그인용으로 만들어뒀던 것이라 새 마이그레이션 불필요).
+- **카카오 이메일은 안 받음**: `kakao_account.email`은 별도 비즈 심사 없이는 대부분 제공되지 않고, 설령 받아온다 해도 그 이메일로 기존 로컬 회원가입 계정과 자동 연결하는 건 하지 않기로 함 — 이메일 소유 확인 없이 카카오 로그인 한 번으로 다른 사람의 기존 계정에 접근할 수 있게 되는 보안 문제가 생기기 때문. 대신 신규 카카오 계정은 내부용으로만 쓰이는 고유 이메일(`kakao_{카카오id}@cookgenie.social`)을 받고, 닉네임은 카카오 프로필 닉네임(없으면 "카카오 사용자")을 씀.
+- `User.KAKAO_PROVIDER = "KAKAO"` 상수 추가(`GUEST_PROVIDER`와 같은 패턴).
+- 환경변수 `KAKAO_REST_API_KEY`(필수, 카카오 디벨로퍼스에서 발급) / `KAKAO_CLIENT_SECRET`(선택, 콘솔에서 Client Secret을 활성화했을 때만) 추가 — 환경설정 섹션 참고. `SecurityConfig`의 `PUBLIC_URLS`에 `/auth/kakao` 추가.
+- **프론트(cookgenieWeb)**: `LoginPage`에 "카카오로 로그인" 버튼 추가(클릭하면 카카오 인가 페이지로 리다이렉트) + 새 라우트 `/auth/kakao/callback`(`KakaoCallbackPage`, 비로그인 상태에서도 접근 가능해야 해서 `ProtectedRoute` 밖에 둠)에서 `?code=`를 받아 `POST /auth/kakao` 호출 → 성공하면 홈으로 이동. `redirect_uri`는 도메인을 하드코딩하지 않고 `${window.location.origin}/auth/kakao/callback`으로 동적으로 만들어서(`utils/kakao.js`) 로컬/프리뷰/프로덕션 어디서든 같은 코드로 동작하게 함 — 그래서 **카카오 디벨로퍼스 콘솔의 "Redirect URI"에 실제 쓰는 도메인마다(예: `http://localhost:5173/auth/kakao/callback`, 배포 도메인 `.../auth/kakao/callback`) 전부 등록해둬야 함** (안 하면 카카오가 `redirect_uri mismatch`로 거부함 — 사용자가 직접 콘솔에서 해야 하는 수동 설정).
+- REST API 키는 카카오 로그인 방식상 프론트 코드(JS)에 그대로 노출되는 값이라 민감정보 취급 안 해도 됨(공식적으로 클라이언트에 노출되도록 설계된 값) — `VITE_KAKAO_REST_API_KEY`로 프론트 `.env.development`에 추가함(로컬용, 실제 키 값은 각자 채워야 함). 배포(Vercel)는 프로젝트 환경변수 설정에서 별도로 등록 필요.
+- **아직 실제 카카오 앱으로 end-to-end 검증 못 함** — 로컬/배포에서 Redirect URI 등록 + 실제 키 채운 뒤 로그인 플로우 테스트 필요.
+
 ## 냉장고 공유 (초대코드)
 
 hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을 그대로 참고해서 만듦.
@@ -243,6 +261,6 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - `FridgeItem`/`Recipe`/장보기/**식단 기록** API들의 냉장고·본인 권한 검증 강화 (지금은 냉장고 존재 여부 또는 최소한의 소유자 확인 정도만)
 - 프론트엔드의 "영양정보 동기화" 버튼 — 이제 없는 엔드포인트(`/ingredients/sync-raw-materials`)를 호출하고 있어서 프론트에서 제거 필요
 - 기존에 영양정보 없이 등록된 재료들(예: 계란/목살/양파/소금 등)을 일괄로 재추정하는 백필(backfill) 기능 (요청은 있었으나 미구현)
-- 소셜 로그인 / 이메일 인증 / 비밀번호 재설정 / 로그아웃 시 JWT 즉시 무효화
+- 구글 소셜 로그인(카카오는 완료) / 이메일 인증 / 비밀번호 재설정 / 로그아웃 시 JWT 즉시 무효화
 - **식단 캘린더 프론트 구현** (cookgenieWeb) — 위 MealLog API를 갖고 "오늘 상세" 화면(진행률 링 + 탄단지 바 + 6개 슬롯 리스트) + "달력" 화면(월별 그리드, 날짜별 식사 요약 배지) 두 가지를 만들어야 함
 - **사진으로 재료 등록 2/3단계 프론트 연결** — 백엔드는 완료(`POST /fridges/{fridgeId}/receipts/scan-order-history`, `POST /fridges/{fridgeId}/products/scan`), 프론트(cookgenieWeb)의 "주문 내역 인식"/"재료 인식" 버튼이 아직 `handleDummyRecognition()`으로 알럿만 띄우는 상태라 `ReceiptScanModal`을 일반화하거나 sibling 컴포넌트로 연결해야 함

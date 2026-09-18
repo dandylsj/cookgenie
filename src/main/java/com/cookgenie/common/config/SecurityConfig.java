@@ -33,6 +33,7 @@ public class SecurityConfig {
             "/auth/login",
             "/auth/reissue",
             "/auth/guest",
+            "/auth/kakao",
             "/actuator/health",
             "/swagger-ui/**",
             "/swagger-ui.html",
