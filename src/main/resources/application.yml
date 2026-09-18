@@ -59,3 +59,7 @@ kakao:
   rest-api-key: ${KAKAO_REST_API_KEY}
   # 카카오 디벨로퍼스에서 "Client Secret"을 활성화한 경우에만 필요 - 기본은 비활성 상태라 비워둬도 됨.
   client-secret: ${KAKAO_CLIENT_SECRET:}
+
+google:
+  client-id: ${GOOGLE_CLIENT_ID}
+  client-secret: ${GOOGLE_CLIENT_SECRET}

@@ -34,6 +34,7 @@ public class SecurityConfig {
             "/auth/reissue",
             "/auth/guest",
             "/auth/kakao",
+            "/auth/google",
             "/actuator/health",
             "/swagger-ui/**",
             "/swagger-ui.html",

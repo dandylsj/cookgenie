@@ -80,6 +80,8 @@ jobs:
           echo "MFDS_DISH_API_KEY=${{ secrets.MFDS_DISH_API_KEY }}" >> .env
           echo "KAKAO_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}" >> .env
           echo "KAKAO_CLIENT_SECRET=${{ secrets.KAKAO_CLIENT_SECRET }}" >> .env
+          echo "GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}" >> .env
+          echo "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" >> .env
           echo "SPRING_JPA_SHOW_SQL=false" >> .env
           echo "SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL=false" >> .env
           echo "SERVER_SHUTDOWN=graceful" >> .env

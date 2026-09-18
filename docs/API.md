@@ -230,6 +230,31 @@ Request Body는 회원가입(`SignupRequest`)과 동일합니다. 같은 유저 
 
 ---
 
+### 1.11 구글 로그인 — `POST /auth/google`
+
+인증 불필요. 카카오와 완전히 같은 인가 코드(authorization code) 방식으로 동작합니다.
+
+1. 프론트가 사용자를 `https://accounts.google.com/o/oauth2/v2/auth?client_id={GOOGLE_CLIENT_ID}&redirect_uri={redirectUri}&response_type=code&scope=openid%20email%20profile`로 보냄.
+2. 사용자가 구글 로그인/동의하면 구글이 `{redirectUri}?code={code}`로 리다이렉트함.
+3. 프론트가 그 `code`와 **1번에서 쓴 것과 정확히 같은** `redirectUri`를 이 API로 보냄.
+4. 백엔드가 구글 토큰 엔드포인트로 `code`를 액세스 토큰으로 교환하고, 그 토큰으로 구글 사용자 정보(`sub`, 닉네임)를 조회함.
+5. `provider="GOOGLE"` + `providerId`(구글 고유 id, `sub`)로 기존 계정을 찾거나, 없으면 새로 만들어 access/refresh 토큰을 발급함.
+
+구글은 이메일을 항상 제공하지만, 로컬 회원가입 계정과 이메일로 자동 연결하는 것은 보안상 위험해서(이메일 소유 확인 없이 계정을 가로챌 수 있음) 카카오와 동일하게 시도하지 않습니다 — 신규 구글 계정은 내부용으로만 쓰이는 고유 이메일(`google_{id}@cookgenie.social`)을 받습니다.
+
+**Request Body** (`GoogleLoginRequest`)
+
+| 필드 | 타입 | 필수 |
+|---|---|---|
+| code | String | O |
+| redirectUri | String | O (인가 코드 발급 때 쓴 것과 정확히 일치해야 함) |
+
+**Response** `200 OK` — `GlobalResponse<TokenResponse>` (형식은 회원가입과 동일)
+
+**에러**: 구글 토큰 교환/사용자 정보 조회 실패(502), 탈퇴한 계정(409)
+
+---
+
 ## 2. 냉장고 API (`/fridges`)
 
 **전부 인증 필요.**

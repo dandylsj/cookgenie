@@ -30,9 +30,11 @@ MFDS_PROCESSED_FOOD_API_KEY: data.go.kr에서 발급받은 "전국통합식품�
 MFDS_DISH_API_KEY: data.go.kr에서 발급받은 "전국통합식품영양성분정보(음식)" 서비스키(디코딩 키) — 계정이 같으면 위 키와 같은 값일 수 있음
 KAKAO_REST_API_KEY: 카카오 디벨로퍼스에서 발급받은 REST API 키
 KAKAO_CLIENT_SECRET: 카카오 디벨로퍼스에서 "Client Secret"을 활성화했을 때만 필요, 기본은 비워둬도 됨
+GOOGLE_CLIENT_ID: Google Cloud Console에서 발급받은 OAuth 2.0 클라이언트 ID(웹 애플리케이션 타입)
+GOOGLE_CLIENT_SECRET: 위 클라이언트와 함께 발급되는 클라이언트 보안 비밀번호
 ```
 
-이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`/`KAKAO_REST_API_KEY`/`KAKAO_CLIENT_SECRET`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
+이 파일만 만들어두면 IDE/터미널에 별도 환경변수를 설정하지 않아도 로컬에서 바로 실행됩니다. (env var로 덮어쓰고 싶으면 OS 환경변수로 `DB_PASSWORD`/`JWT_SECRET_KEY`/`ANTHROPIC_API_KEY`/`YOUTUBE_API_KEY`/`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`/`KAKAO_REST_API_KEY`/`KAKAO_CLIENT_SECRET`/`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`를 설정해도 동일하게 동작 — Spring이 어차피 이름이 같은 프로퍼티로 플레이스홀더를 채움).
 
 `YOUTUBE_API_KEY`는 Google Cloud Console에서 **YouTube Data API v3**를 활성화하고 발급받은 API 키입니다(무료지만 일일 할당량 있음). 유튜브 레시피 검색/가져오기 기능에 쓰입니다.
 
@@ -44,9 +46,15 @@ KAKAO_CLIENT_SECRET: 카카오 디벨로퍼스에서 "Client Secret"을 활성�
 
 `KAKAO_REST_API_KEY`는 [카카오 디벨로퍼스](https://developers.kakao.com)에서 앱을 만들면 발급되는 REST API 키입니다(카카오 로그인의 OAuth `client_id`로 그대로 씀). 이 키가 없으면 앱 기동 자체가 실패함(다른 외부 API 키들과 달리 `${KAKAO_REST_API_KEY}`에 기본값이 없어서) — 로컬에서 카카오 로그인을 안 쓸 거면 아무 문자열이나 넣어두면 기동은 되고 `/auth/kakao` 호출만 실패함. `KAKAO_CLIENT_SECRET`은 콘솔의 "카카오 로그인 > 보안 > Client Secret"을 활성화한 경우에만 필요하고(`${KAKAO_CLIENT_SECRET:}`로 기본값이 빈 문자열이라 안 넣어도 기동은 됨), 활성화했는데 안 보내면 토큰 교환이 거부됨.
 
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`은 [Google Cloud Console](https://console.cloud.google.com) → API 및 서비스 → OAuth 클라이언트 ID(유형: **웹 애플리케이션**)를 만들면 발급됩니다. 카카오와 달리 구글은 웹 클라이언트 타입에서 client_secret이 선택이 아니라 **항상 필요**해서(`GoogleAuthClient`가 토큰 교환 요청에 항상 포함시킴) 둘 다 기본값 없는 필수 프로퍼티임 — 둘 중 하나라도 없으면 앱 기동 자체가 실패함. OAuth 클라이언트를 만들 때 "승인된 리다이렉트 URI"에 실제 쓸 프론트 도메인 + `/auth/google/callback`을 등록해둬야 함(카카오의 Redirect URI 등록과 같은 개념).
+
 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USERNAME`은 로컬 기본값(`localhost`/`3306`/`cookgenie`/`root`)이 있어서 별도 설정 없이 그대로 씁니다. 로컬 MySQL은 `sql/create_database.sql`로 `cookgenie` DB만 만들면 테이블은 앱 기동 시 자동 생성됩니다.
 
-**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `MFDS_DISH_API_KEY`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`/`KAKAO_REST_API_KEY`/`KAKAO_CLIENT_SECRET`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요** — `KAKAO_REST_API_KEY`는 다른 키들과 달리 **없으면 앱 기동 자체가 실패**하므로(기본값 없는 필수 프로퍼티) 반드시 등록해야 함.
+**배포 서버 쪽**은 `application-secrets.yml`이 이미지에 아예 없으므로(로컬 전용, git에도 안 올라가고 Docker 이미지에도 안 들어감) 관여하지 않고, `.github/workflows/deploy-to-ubuntu.yml`이 GitHub `ubuntu` 환경의 Secrets(`DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ANTHROPIC_API_KEY`, `YOUTUBE_API_KEY`, `COUPANG_ACCESS_KEY`, `COUPANG_SECRET_KEY`, `MFDS_PROCESSED_FOOD_API_KEY`, `MFDS_DISH_API_KEY`, `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GHCR_PAT`)에서 값을 읽어 서버의 `.env` 파일로 주입 → 컨테이너 실행 시 OS 환경변수로 전달되어 `application.yml`의 플레이스홀더를 채웁니다. **`COUPANG_ACCESS_KEY`/`COUPANG_SECRET_KEY`/`MFDS_PROCESSED_FOOD_API_KEY`/`MFDS_DISH_API_KEY`/`KAKAO_REST_API_KEY`/`KAKAO_CLIENT_SECRET`/`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`는 GitHub `ubuntu` 환경 Secrets에 아직 등록 안 되어 있을 수 있으니 배포 전에 확인 필요.**
+
+### 지나간 사고: 시크릿을 등록 안 해도 배포가 "성공"으로 뜨는 문제 (카카오 로그인에서 실제로 겪음)
+
+`KAKAO_REST_API_KEY`/`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`처럼 `application.yml`에 기본값 없이 선언된(`${KAKAO_REST_API_KEY}`처럼 `:` 뒤에 아무것도 없는) 필수 프로퍼티는, **로컬**에서 `application-secrets.yml`에 아예 안 넣으면 그 환경변수 자체가 없어서 Spring이 기동 시점에 바로 크래시함(의도대로 동작). 하지만 **배포 워크플로우**에서는 `echo "KAKAO_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}" >> .env`처럼 항상 그 줄 자체는 쓰기 때문에, GitHub Secrets에 값을 등록 안 해놔도 빈 문자열(`""`)로 치환되어 `.env`에 `KAKAO_REST_API_KEY=`(빈 값)가 그대로 들어감 — 컨테이너 입장에서는 "환경변수가 없는 게 아니라 빈 문자열인 상태"라서 Spring의 필수 프로퍼티 검증을 통과해버리고 앱이 정상 기동함. 그 결과 배포는 계속 "성공"으로 뜨지만, 실제로는 빈 `client_id`로 카카오/구글에 요청을 보내게 되어 로그인 시도 시에만(401 등으로) 실패가 드러남. **그래서 "배포가 성공했다" = "시크릿이 등록되어 있다"가 절대 아니고, 실제로 그 기능을 써봐야(로그인 시도) 시크릿이 제대로 들어갔는지 확인된다** — 새 소셜 로그인 provider를 추가할 때마다 이 함정을 기억할 것.
 
 ### 지나간 사고: application.yml이 통째로 배포에서 빠져있었던 문제
 
@@ -63,7 +71,7 @@ KAKAO_CLIENT_SECRET: 카카오 디벨로퍼스에서 "Client Secret"을 활성�
 
 | 도메인 | 상태 |
 |---|---|
-| Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필 + **게스트 시작/게스트→정식회원 전환** + **카카오 로그인**. JWT, Spring Security |
+| Auth | 완료 — 회원가입/로그인/로그아웃/탈퇴/토큰재발급/프로필 + **게스트 시작/게스트→정식회원 전환** + **카카오/구글 로그인**. JWT, Spring Security |
 | Fridge | 완료 — 생성/목록/단건조회/삭제(OWNER만) + **4자리 초대코드 발급/참여로 공유** |
 | FridgeItem | 완료 — CRUD, 재료 수량 기준 탄단지 자동 계산(단위 일치할 때만) |
 | Ingredient | 완료 — 검색/등록/수정/삭제. **등록 시 Claude가 100g 기준 영양정보 자동 추정** (아래 참고) |
@@ -71,7 +79,7 @@ KAKAO_CLIENT_SECRET: 카카오 디벨로퍼스에서 "Client Secret"을 활성�
 | Receipt/Product(사진 인식) | **3/3단계 완료**: 영수증 사진 / 온라인 쇼핑몰 주문내역 캡처 / 실물 상품 사진 → Claude 비전으로 식재료 후보 추출(미리보기만, 저장은 안 함), **기존 재료·가공식품·음식 공식 데이터와 자동 매칭**까지 포함 |
 | Shopping(장보기) | 완료 — 냉장고별 장보기 리스트 추가/조회/체크/삭제, **쿠팡파트너스 연동 최저가 검색** |
 | MealLog(식단 기록) / NutritionGoal | **백엔드 완료** — 기록 추가(레시피 선택/재료 직접입력)/하루 상세 조회/달력 요약/삭제, 목표 칼로리·탄단지 설정/조회. **프론트는 미착수** |
-| 소셜 로그인(구글) / 이메일 인증 / 비밀번호 재설정 | 미구현 (카카오는 완료, 아래 참고) |
+| 이메일 인증 / 비밀번호 재설정 | 미구현 (카카오/구글 소셜 로그인은 완료, 아래 참고) |
 
 전체 엔드포인트 상세 스펙은 **`docs/API.md`** 참고.
 
@@ -180,7 +188,25 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 - 환경변수 `KAKAO_REST_API_KEY`(필수, 카카오 디벨로퍼스에서 발급) / `KAKAO_CLIENT_SECRET`(선택, 콘솔에서 Client Secret을 활성화했을 때만) 추가 — 환경설정 섹션 참고. `SecurityConfig`의 `PUBLIC_URLS`에 `/auth/kakao` 추가.
 - **프론트(cookgenieWeb)**: `LoginPage`에 "카카오로 로그인" 버튼 추가(클릭하면 카카오 인가 페이지로 리다이렉트) + 새 라우트 `/auth/kakao/callback`(`KakaoCallbackPage`, 비로그인 상태에서도 접근 가능해야 해서 `ProtectedRoute` 밖에 둠)에서 `?code=`를 받아 `POST /auth/kakao` 호출 → 성공하면 홈으로 이동. `redirect_uri`는 도메인을 하드코딩하지 않고 `${window.location.origin}/auth/kakao/callback`으로 동적으로 만들어서(`utils/kakao.js`) 로컬/프리뷰/프로덕션 어디서든 같은 코드로 동작하게 함 — 그래서 **카카오 디벨로퍼스 콘솔의 "Redirect URI"에 실제 쓰는 도메인마다(예: `http://localhost:5173/auth/kakao/callback`, 배포 도메인 `.../auth/kakao/callback`) 전부 등록해둬야 함** (안 하면 카카오가 `redirect_uri mismatch`로 거부함 — 사용자가 직접 콘솔에서 해야 하는 수동 설정).
 - REST API 키는 카카오 로그인 방식상 프론트 코드(JS)에 그대로 노출되는 값이라 민감정보 취급 안 해도 됨(공식적으로 클라이언트에 노출되도록 설계된 값) — `VITE_KAKAO_REST_API_KEY`로 프론트 `.env.development`에 추가함(로컬용, 실제 키 값은 각자 채워야 함). 배포(Vercel)는 프로젝트 환경변수 설정에서 별도로 등록 필요.
-- **아직 실제 카카오 앱으로 end-to-end 검증 못 함** — 로컬/배포에서 Redirect URI 등록 + 실제 키 채운 뒤 로그인 플로우 테스트 필요.
+- **실제 배포 후 end-to-end 검증 완료** — 그 과정에서 겪은 문제들과 원인:
+  1. **KOE006 "앱 관리자 설정 오류"**: 카카오 디벨로퍼스 콘솔에서 "카카오 로그인" 제품 활성화 + 플랫폼(Web) 도메인 등록 + Redirect URI 등록, 이 세 가지를 다 해야 함 — 하나라도 빠지면 이 에러가 남.
+  2. **콜백 페이지가 404**: Vercel이 `vercel.json` 없이는 SPA 라우팅 fallback이 없어서, 앱 안에서 `<Link>`로 이동할 때는 문제없지만 카카오처럼 외부에서 풀 페이지로 리다이렉트되는 경로(`/auth/kakao/callback`)는 실제 파일이 없다며 404가 남. 모든 경로를 `index.html`로 rewrite하는 `vercel.json` 추가로 해결.
+  3. **브라우저에 CORS 에러로 보였던 502**: 실제로는 위 "지나간 사고"에 적은 대로 `KAKAO_REST_API_KEY` GitHub Secret이 등록 안 돼 있어서(빈 문자열) 카카오가 401을 준 것이었음 — CORS 헤더가 없는 에러 응답이라 브라우저가 CORS 문제로 잘못 표시함. `docker logs`로 서버 로그를 직접 봐야 진짜 원인(401)이 드러남.
+  4. **키를 다시 넣어도 계속 401**: REST API 키 자체는 맞았지만, 콘솔에서 "Client Secret"이 활성화돼 있던 상태라 `KAKAO_CLIENT_SECRET`도 같이 등록해야 했음.
+  5. **닉네임이 항상 "카카오 사용자"로만 저장됨**: 인가 요청에 `scope`를 안 보내면 콘솔 동의항목이 "필수 동의"가 아닌 항목(닉네임)은 안 내려옴 — `scope=profile_nickname`을 인가 URL에 명시해서 해결.
+
+## 구글 소셜 로그인
+
+카카오와 완전히 같은 인가 코드(authorization code) 구조로 만듦 — 위 카카오 섹션에서 겪은 시행착오(콘솔 설정 누락, 시크릿 미등록, scope 누락 등)를 미리 반영해서 처음부터 정리된 상태로 구현함.
+
+- 흐름은 카카오와 동일: 프론트가 `https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&response_type=code&scope=openid email profile`로 리다이렉트 → 구글 로그인/동의 후 `code`와 함께 `redirect_uri`로 리다이렉트됨 → 프론트가 `code`+`redirectUri`를 `POST /auth/google`로 보냄 → 백엔드가 `https://oauth2.googleapis.com/token`에서 액세스 토큰으로 교환하고, `https://www.googleapis.com/oauth2/v3/userinfo`로 사용자 정보(`sub`/`name`/`email`)를 받아옴.
+- 새 클라이언트 `domain/auth/external/GoogleAuthClient`(`KakaoAuthClient`와 완전히 같은 구조 — 실패 시 예외, connect 5초/read 8초 타임아웃 처음부터 반영)와 `domain/auth/external/GoogleUserInfo`(id/nickname record).
+- **구글은 client_secret이 선택이 아니라 항상 필수**임(웹 애플리케이션 클라이언트 타입 기준) — 카카오는 콘솔에서 Client Secret을 켰을 때만 필요했지만, 구글은 `GoogleAuthClient`가 토큰 교환 요청에 항상 `client_secret`을 포함시킴. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` 둘 다 기본값 없는 필수 프로퍼티.
+- `AuthService.googleLogin()`이 `User.findByProviderAndProviderId("GOOGLE", sub)`로 기존 계정을 찾거나 새로 만듦. **구글은 이메일을 항상 제공하지만**(카카오와 달리 비즈 심사 불필요), 카카오와 같은 이유(이메일 소유 확인 없이 로컬 계정에 자동 연결되는 보안 문제 — `email` 컬럼 유니크 제약과도 충돌함)로 실제 이메일을 쓰지 않고 내부용 고유 이메일(`google_{구글 고유 id}@cookgenie.social`)을 만들어 저장함 — 카카오와 완전히 같은 정책.
+- `User.GOOGLE_PROVIDER = "GOOGLE"` 상수 추가. `SecurityConfig`의 `PUBLIC_URLS`에 `/auth/google` 추가.
+- **프론트(cookgenieWeb)**: `LoginPage`에 "구글로 로그인" 버튼, 새 라우트 `/auth/google/callback`(`GoogleCallbackPage`, `KakaoCallbackPage`와 동일 구조), `utils/google.js`(`getGoogleAuthorizeUrl`/`getGoogleRedirectUri`, 카카오와 동일하게 `redirect_uri`를 `window.location.origin` 기준으로 동적 생성). **Google Cloud Console의 OAuth 클라이언트 "승인된 리다이렉트 URI"에 실제 쓰는 프론트 도메인마다 `/auth/google/callback`을 등록해둬야 함**(카카오의 Redirect URI 등록과 같은 개념 — 안 하면 `redirect_uri_mismatch` 에러).
+- 클라이언트 ID는 카카오 REST API 키와 마찬가지로 프론트 코드에 노출되는 게 정상인 값이라 `VITE_GOOGLE_CLIENT_ID`로 프론트 `.env.development`에 추가함(로컬용). **클라이언트 시크릿(`GOOGLE_CLIENT_SECRET`)은 절대 프론트에 노출하면 안 됨** — 백엔드 시크릿으로만 등록.
+- **아직 실제 구글 OAuth 클라이언트로 end-to-end 검증 못 함** — 카카오 때 겪은 시행착오를 감안해서, 배포 전에 Google Cloud Console에서 OAuth 클라이언트 생성 + 승인된 리다이렉트 URI 등록 + `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`를 로컬(`application-secrets.yml`)과 배포(GitHub `ubuntu` 환경 Secrets, `VITE_GOOGLE_CLIENT_ID`는 Vercel 환경변수)에 전부 등록해야 함.
 
 ## 냉장고 공유 (초대코드)
 
