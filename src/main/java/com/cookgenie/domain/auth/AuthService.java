@@ -193,9 +193,9 @@ public class AuthService {
     @Transactional
     public void withdraw(String accessToken, WithdrawRequest request) {
         jwtUtil.validateToken(accessToken);
-        String loginId = jwtUtil.extractLoginId(accessToken);
+        Long userId = jwtUtil.extractUserId(accessToken);
 
-        User user = userRepository.findByLoginId(loginId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
 
         if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
@@ -235,9 +235,9 @@ public class AuthService {
     @Transactional(readOnly = true)
     public UserInfoResponse getUserInfo(String accessToken) {
         jwtUtil.validateToken(accessToken);
-        String loginId = jwtUtil.extractLoginId(accessToken);
+        Long userId = jwtUtil.extractUserId(accessToken);
 
-        User user = userRepository.findByLoginId(loginId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(ErrorMessage.USER_NOT_FOUND));
 
         return new UserInfoResponse(user);

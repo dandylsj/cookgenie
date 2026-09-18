@@ -206,7 +206,11 @@ YouTube Data API v3의 `search.list`는 "Search Queries per day" 쿼터가 별�
 - `User.GOOGLE_PROVIDER = "GOOGLE"` 상수 추가. `SecurityConfig`의 `PUBLIC_URLS`에 `/auth/google` 추가.
 - **프론트(cookgenieWeb)**: `LoginPage`에 "구글로 로그인" 버튼, 새 라우트 `/auth/google/callback`(`GoogleCallbackPage`, `KakaoCallbackPage`와 동일 구조), `utils/google.js`(`getGoogleAuthorizeUrl`/`getGoogleRedirectUri`, 카카오와 동일하게 `redirect_uri`를 `window.location.origin` 기준으로 동적 생성). **Google Cloud Console의 OAuth 클라이언트 "승인된 리다이렉트 URI"에 실제 쓰는 프론트 도메인마다 `/auth/google/callback`을 등록해둬야 함**(카카오의 Redirect URI 등록과 같은 개념 — 안 하면 `redirect_uri_mismatch` 에러).
 - 클라이언트 ID는 카카오 REST API 키와 마찬가지로 프론트 코드에 노출되는 게 정상인 값이라 `VITE_GOOGLE_CLIENT_ID`로 프론트 `.env.development`에 추가함(로컬용). **클라이언트 시크릿(`GOOGLE_CLIENT_SECRET`)은 절대 프론트에 노출하면 안 됨** — 백엔드 시크릿으로만 등록.
-- **아직 실제 구글 OAuth 클라이언트로 end-to-end 검증 못 함** — 카카오 때 겪은 시행착오를 감안해서, 배포 전에 Google Cloud Console에서 OAuth 클라이언트 생성 + 승인된 리다이렉트 URI 등록 + `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`를 로컬(`application-secrets.yml`)과 배포(GitHub `ubuntu` 환경 Secrets, `VITE_GOOGLE_CLIENT_ID`는 Vercel 환경변수)에 전부 등록해야 함.
+- **실제 구글 OAuth 클라이언트로 end-to-end 검증 완료** — Google Cloud Console에서 OAuth 클라이언트 생성 + 승인된 리다이렉트 URI 등록 + `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`를 로컬(`application-secrets.yml`)과 배포(GitHub `ubuntu` 환경 Secrets, `VITE_GOOGLE_CLIENT_ID`는 Vercel 환경변수)에 등록한 뒤 실제 로그인 성공.
+
+### 버그: 소셜 로그인 계정이 2개 이상 쌓이면 `GET /auth/profile`이 500 (수정함)
+
+구글 로그인 검증 중 발견. 카카오 로그인 하나만 테스트했을 때는 잘 되던 `GET /auth/profile`이, 구글 로그인까지 테스트하고 나니 500 Internal Server Error로 깨짐. 원인은 `AuthService.getUserInfo()`/`withdraw()`가 JWT의 `subject`(=`loginId`)를 꺼내 `userRepository.findByLoginId(loginId)`로 사용자를 조회하는 구조였는데, **카카오/구글 로그인으로 만들어진 계정은 `loginId` 컬럼을 채우지 않아서 항상 `null`**이라는 점을 놓쳤던 것. Spring Data JPA는 `findByLoginId(null)`을 `WHERE login_id IS NULL`로 번역하는데, 소셜 계정이 1개뿐일 때는 이게 우연히 정확히 1건만 매칭돼서 문제가 드러나지 않았고, 카카오 테스트 계정(loginId=null) + 구글 테스트 계정(loginId=null)이 동시에 존재하게 되자 2건이 매칭되어 `findByLoginId`가 단건 조회(`Optional`)에 쓰이는 Hibernate 쿼리가 `NonUniqueResultException`을 던지면서 500이 남. `getUserInfo()`/`withdraw()` 둘 다 JWT의 `userId` 클레임(`extractUserId`)으로 `userRepository.findById()`를 쓰도록 고쳐서(이미 `updateNickname`/`upgradeGuest`/`logout`은 이 패턴을 쓰고 있었음) `loginId`가 없는 계정과 무관하게 항상 정확히 그 유저만 조회되게 함.
 
 ## 냉장고 공유 (초대코드)
 
