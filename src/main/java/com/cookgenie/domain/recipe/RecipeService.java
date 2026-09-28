@@ -64,7 +64,7 @@ public class RecipeService {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
 
-        List<FridgeItem> fridgeItems = fridgeItemRepository.findByFridgeId(fridgeId);
+        List<FridgeItem> fridgeItems = fridgeItemRepository.findWithIngredientByFridgeId(fridgeId);
 
         List<String> ingredientNames = List.of();
         if (request.isUseFridgeIngredients()) {
@@ -174,7 +174,7 @@ public class RecipeService {
         if (!fridgeRepository.existsById(fridgeId)) {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
-        Set<String> fridgeIngredientNames = normalizeNames(fridgeItemRepository.findByFridgeId(fridgeId).stream()
+        Set<String> fridgeIngredientNames = normalizeNames(fridgeItemRepository.findWithIngredientByFridgeId(fridgeId).stream()
                 .map(item -> item.getIngredient().getName()));
         return toResponse(recipe, fridgeIngredientNames);
     }
@@ -301,7 +301,7 @@ public class RecipeService {
 
     /** 냉장고 재료 이름 중 일부로 유튜브 검색어를 만든다. 재료가 없으면 예외. */
     private String buildQueryFromFridgeItems(Long fridgeId) {
-        List<String> ingredientNames = fridgeItemRepository.findByFridgeId(fridgeId).stream()
+        List<String> ingredientNames = fridgeItemRepository.findWithIngredientByFridgeId(fridgeId).stream()
                 .map(item -> item.getIngredient().getName())
                 .distinct()
                 .limit(YOUTUBE_QUERY_INGREDIENT_COUNT)

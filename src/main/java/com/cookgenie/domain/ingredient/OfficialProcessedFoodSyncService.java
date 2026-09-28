@@ -3,6 +3,7 @@ package com.cookgenie.domain.ingredient;
 import com.cookgenie.domain.ingredient.entity.OfficialProcessedFood;
 import com.cookgenie.domain.ingredient.external.MfdsProcessedFoodClient;
 import com.cookgenie.domain.ingredient.external.OfficialFoodCandidate;
+import com.cookgenie.domain.ingredient.repository.OfficialFoodBulkInsertRepository;
 import com.cookgenie.domain.ingredient.repository.OfficialProcessedFoodRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,6 +36,7 @@ public class OfficialProcessedFoodSyncService {
 
     private final MfdsProcessedFoodClient mfdsProcessedFoodClient;
     private final OfficialProcessedFoodRepository officialProcessedFoodRepository;
+    private final OfficialFoodBulkInsertRepository officialFoodBulkInsertRepository;
 
     /**
      * 이미 데이터가 있으면(force=false) 시작하지 않는다. force=true면 기존 데이터는 그대로 둔 채 전체를
@@ -94,34 +96,17 @@ public class OfficialProcessedFoodSyncService {
                 .map(food -> compositeKey(food.getFoodCd(), food.getFoodNm(), food.getMfrNm()))
                 .collect(Collectors.toSet());
 
-        List<OfficialProcessedFood> entities = deduped.entrySet().stream()
+        List<OfficialFoodCandidate> newItems = deduped.entrySet().stream()
                 .filter(entry -> !alreadySaved.contains(entry.getKey()))
-                .map(entry -> toEntity(entry.getValue()))
+                .map(Map.Entry::getValue)
                 .toList();
-        if (!entities.isEmpty()) {
-            officialProcessedFoodRepository.saveAll(entities);
-        }
-        return entities.size();
+        // IDENTITY PK라 JPA saveAll은 INSERT를 한 건씩 보낸다 - 대량 적재는 JDBC 배치로 한 번에 보낸다.
+        officialFoodBulkInsertRepository.insertProcessedFoods(newItems);
+        return newItems.size();
     }
 
     private String compositeKey(String foodCd, String foodNm, String mfrNm) {
         return foodCd + "" + foodNm + "" + (mfrNm == null ? "" : mfrNm);
-    }
-
-    private OfficialProcessedFood toEntity(OfficialFoodCandidate candidate) {
-        return OfficialProcessedFood.builder()
-                .foodCd(candidate.foodCd())
-                .foodNm(candidate.foodNm())
-                .mfrNm(candidate.mfrNm())
-                .referenceUnit(candidate.referenceUnit())
-                .calories(candidate.calories())
-                .carbohydrateG(candidate.carbohydrateG())
-                .proteinG(candidate.proteinG())
-                .fatG(candidate.fatG())
-                .sugarG(candidate.sugarG())
-                .sodiumMg(candidate.sodiumMg())
-                .fiberG(candidate.fiberG())
-                .build();
     }
 
     public record SyncTriggerResult(boolean started, long previousCount, String message) {

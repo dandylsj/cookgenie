@@ -33,7 +33,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +51,7 @@ public class IngredientService {
     private final OfficialProcessedFoodRepository officialProcessedFoodRepository;
     private final MfdsDishClient mfdsDishClient;
     private final OfficialDishRepository officialDishRepository;
+    private final OfficialFoodSearcher officialFoodSearcher;
 
     /**
      * 이름에 keyword가 포함된 식재료를 검색한다. keyword가 없으면 전체 목록을 반환한다.
@@ -89,15 +89,14 @@ public class IngredientService {
      * mfrNm(제조사)도 같이 내려준다 - 화면에서 같이 보여줘서 사용자가 정확한 걸 고르게 해야 함.
      *
      * <p>정부 API 자체는 foodNm이 완전 일치해야만 찾아져서(부분검색 불가, 실측으로 확인됨) 여기서는
-     * {@link OfficialProcessedFoodSyncService}가 미리 통째로 복사해둔 로컬 테이블에서 LIKE 검색을 한다 -
+     * {@link OfficialProcessedFoodSyncService}가 미리 통째로 복사해둔 로컬 테이블에서 검색한다 - 결과가 많은
+     * 검색어는 LIKE로, 드문 검색어는 FULLTEXT(ngram) 인덱스로 찾는다({@link OfficialFoodSearcher} 참고).
      * 동기화 전이거나 아직 안 되어 있으면 그냥 빈 목록이 나온다(에러 아님, POST .../official-foods/sync로 채우면 됨).
      */
     @Transactional(readOnly = true)
     public List<OfficialFoodCandidateResponse> searchOfficialFoods(String keyword, Integer limit) {
         int size = limit != null && limit > 0 ? limit : 20;
-        return officialProcessedFoodRepository
-                .findByFoodNmContainingOrMfrNmContaining(keyword, keyword, PageRequest.of(0, size))
-                .stream()
+        return officialFoodSearcher.searchProcessedFoods(keyword, size).stream()
                 .map(OfficialFoodCandidateResponse::new)
                 .toList();
     }
@@ -108,15 +107,13 @@ public class IngredientService {
      * 없는 경우가 많아서 restNm(제공 업체명)도 같이 내려준다.
      *
      * <p>{@link #searchOfficialFoods}(가공식품)와 마찬가지로 정부 API 자체는 부분검색이 안 되므로,
-     * {@link OfficialDishSyncService}가 미리 복사해둔 로컬 테이블에서 LIKE 검색을 한다 - 동기화 전이면
+     * {@link OfficialDishSyncService}가 미리 복사해둔 로컬 테이블에서 검색한다(FULLTEXT 또는 LIKE) - 동기화 전이면
      * 빈 목록이 나온다(에러 아님, POST .../dishes/sync로 채우면 됨).
      */
     @Transactional(readOnly = true)
     public List<OfficialDishCandidateResponse> searchDishes(String keyword, Integer limit) {
         int size = limit != null && limit > 0 ? limit : 20;
-        return officialDishRepository
-                .findByFoodNmContainingOrRestNmContaining(keyword, keyword, PageRequest.of(0, size))
-                .stream()
+        return officialFoodSearcher.searchDishes(keyword, size).stream()
                 .map(OfficialDishCandidateResponse::new)
                 .toList();
     }
