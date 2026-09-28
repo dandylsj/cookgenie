@@ -21,6 +21,8 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -74,8 +76,10 @@ public class FridgeItemService {
         if (!fridgeRepository.existsById(fridgeId)) {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
-        return fridgeItemRepository.findByFridgeId(fridgeId).stream()
-                .map(this::toResponse)
+        List<FridgeItem> items = fridgeItemRepository.findWithIngredientByFridgeId(fridgeId);
+        Map<Long, NutritionInfo> nutritionByIngredientId = loadNutritionInfos(items);
+        return items.stream()
+                .map(item -> toResponse(item, nutritionByIngredientId))
                 .toList();
     }
 
@@ -117,7 +121,8 @@ public class FridgeItemService {
             throw new CustomException(ErrorMessage.FRIDGE_NOT_FOUND);
         }
 
-        List<FridgeItem> items = fridgeItemRepository.findByFridgeId(fridgeId);
+        List<FridgeItem> items = fridgeItemRepository.findWithIngredientByFridgeId(fridgeId);
+        Map<Long, NutritionInfo> nutritionByIngredientId = loadNutritionInfos(items);
         LocalDate today = LocalDate.now();
         LocalDate expiringSoonThreshold = today.plusDays(EXPIRING_SOON_DAYS);
 
@@ -148,14 +153,14 @@ public class FridgeItemService {
                 .filter(item -> item.getExpiryDate() != null && !item.getExpiryDate().isAfter(expiringSoonThreshold))
                 .sorted(Comparator.comparing(FridgeItem::getExpiryDate))
                 .limit(EXPIRY_ATTENTION_LIMIT)
-                .map(this::toResponse)
+                .map(item -> toResponse(item, nutritionByIngredientId))
                 .toList();
 
         List<FridgeItemResponse> longNeglectedItems = items.stream()
                 .filter(item -> item.getPurchasedAt() != null)
                 .sorted(Comparator.comparing(FridgeItem::getPurchasedAt))
                 .limit(LONG_NEGLECTED_LIMIT)
-                .map(this::toResponse)
+                .map(item -> toResponse(item, nutritionByIngredientId))
                 .toList();
 
         List<DailyActivityCount> activityHeatmap = buildActivityHeatmap(items, today);
@@ -207,5 +212,21 @@ public class FridgeItemService {
         NutritionInfo nutritionInfo = nutritionInfoRepository.findByIngredientId(item.getIngredient().getId())
                 .orElse(null);
         return new FridgeItemResponse(item, nutritionInfo);
+    }
+
+    /** 목록용 - 재료마다 NutritionInfo를 따로 조회하지 않고(N+1) IN 쿼리 한 번으로 미리 가져온다. */
+    private Map<Long, NutritionInfo> loadNutritionInfos(List<FridgeItem> items) {
+        if (items.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> ingredientIds = items.stream()
+                .map(item -> item.getIngredient().getId())
+                .collect(Collectors.toSet());
+        return nutritionInfoRepository.findByIngredientIdIn(ingredientIds).stream()
+                .collect(Collectors.toMap(info -> info.getIngredient().getId(), Function.identity(), (a, b) -> a));
+    }
+
+    private FridgeItemResponse toResponse(FridgeItem item, Map<Long, NutritionInfo> nutritionByIngredientId) {
+        return new FridgeItemResponse(item, nutritionByIngredientId.get(item.getIngredient().getId()));
     }
 }

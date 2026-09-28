@@ -286,6 +286,25 @@ hatoo 프로젝트(`C:\hatto`, `domain/groups`)의 그룹 초대코드 방식을
 - `DELETE /fridges/{fridgeId}/leave` — 본인 탈퇴. **OWNER는 탈퇴 불가**(`CANNOT_LEAVE_AS_OWNER`) — 소유권 이전 기능이 없어서 먼저 냉장고를 삭제하거나(2.4) 다른 사람에게 소유권을 넘기는 기능이 생길 때까지는 이 제약을 유지. `ErrorMessage`에 `FRIDGE_MEMBER_NOT_FOUND`/`CANNOT_KICK_SELF`/`CANNOT_LEAVE_AS_OWNER` 추가.
 - 프론트: `Sidebar`에 "설정"(`/settings`) 네비 항목 추가, 새 `SettingsPage`(닉네임 변경 폼 + 알림 토글은 `localStorage`에만 저장하는 순수 프론트 더미, 서버 호출 없음). `SharePage`에 멤버 목록 카드 추가(본인이 OWNER면 각 멤버 옆에 강퇴 버튼, 본인이 MEMBER면 "탈퇴하기" 버튼 — 자기 행에는 강퇴 버튼 대신 "나" 표시).
 
+## 성능 개선 (측정 테스트: `src/test/java/com/cookgenie/performance/`)
+
+측정 테스트는 실제 MySQL 8이 필요해서(FULLTEXT ngram, `rewriteBatchedStatements` 등 H2로 재현 불가) 평소 `./gradlew test`에서는 건너뛰고 `PERF_TEST=true`일 때만 돈다. 개발 DB를 더럽히지 않게 별도 스키마 `cookgenie_perf`(자동 생성)를 씀: `PERF_TEST=true PERF_DB_PASSWORD=비밀번호 ./gradlew test --tests "com.cookgenie.performance.*"` (결과는 `build/test-results/test/*.xml`의 system-out에 표로 찍힘). 아래 수치는 로컬 Docker MySQL 8.0 기준.
+
+1. **공공데이터 부분검색 — LIKE/FULLTEXT 하이브리드** (`OfficialFoodSearcher`, `OfficialFoodSearchPerformanceTest`, 59만 건 가짜 데이터)
+   - 원인: `LIKE '%키워드%' OR mfr_nm LIKE ...`는 앞에 %가 붙어 B-Tree 인덱스를 못 탐(EXPLAIN `type=ALL`, rows≈59만). LIMIT 20이라 결과가 많은 검색어("라면")는 20건 찾으면 멈춰서 빠르지만(~5ms), **결과가 적거나 없는 검색어는 59만 행을 끝까지 훑어서 700ms 이상** 걸림.
+   - 1차 시도(FULLTEXT ngram 단독)는 **실측해보니 반대 방향으로 실패**함: 드문 검색어는 2ms로 빨라졌지만, InnoDB FULLTEXT는 LIMIT과 무관하게 매칭 문서를 전부 모은 뒤 잘라서 결과 13만 건인 "라면"은 5ms→280ms, 제조사명 "누리제과"(3만 건)는 3ms→730ms로 오히려 수십 배 느려짐.
+   - 최종: LIKE를 `/*+ MAX_EXECUTION_TIME(50) */`로 먼저 실행하고, 50ms 안에 못 끝나면(=드문 검색어) MySQL 에러 3024를 잡아서 FULLTEXT로 다시 찾음. 결과 많은 검색어는 LIKE가, 드문 검색어는 FULLTEXT가 처리. 결과: **검색어 평균 243ms→25ms(89.7%↓), 최악 p95 782ms→57ms(92.8%↓)**. 대가로 흔한 검색어는 id 조회+PK 조회 2번이라 +3~5ms.
+   - LIKE 쿼리는 JdbcTemplate으로 직접 보냄 — 시간 초과 예외가 JPA 리포지토리 프록시를 통과하면 바깥 `@Transactional`이 rollback-only로 찍혀서 폴백에 성공해도 커밋 때 `UnexpectedRollbackException`이 나기 때문.
+   - 1글자 검색어("닭")나 기호가 섞인 검색어는 ngram(토큰 2글자)으로 LIKE와 같은 결과를 보장 못 해서 기존 LIKE로 처리(`FullTextKeyword`). 테스트에서 FULLTEXT 매칭 건수 = LIKE 매칭 건수인지 검증함.
+   - FULLTEXT 인덱스는 JPA `@Index`로 못 만들고 Flyway도 꺼져 있어서 `OfficialFoodFullTextIndexInitializer`가 기동 후 비동기로 없으면 `ALTER TABLE ... ADD FULLTEXT ... WITH PARSER ngram`을 실행함(59만 건 기준 약 20초, 그동안은 LIKE로 동작, 인덱스 생성 중에는 해당 테이블 쓰기가 막히므로 동기화와 겹치지 않게 주의). **배포 후 첫 기동 로그에서 `[FULLTEXT] ... 인덱스 생성 완료`가 찍히는지 확인할 것.** MySQL 서버의 `ngram_token_size`는 기본값(2)이어야 함.
+2. **공공데이터 동기화 저장 — JDBC 배치 INSERT** (`OfficialFoodBulkInsertRepository`, `OfficialFoodBulkInsertPerformanceTest`)
+   - 원인: `OfficialProcessedFood`/`OfficialDish`의 PK가 `IDENTITY`라 Hibernate가 INSERT 배치를 꺼버려서 `saveAll(1000건)`이 INSERT 1000번(59만 건이면 59만 번)이었음.
+   - `JdbcTemplate.batchUpdate` + JDBC URL `rewriteBatchedStatements=true`(드라이버가 multi-row INSERT로 재작성)로 교체. 3만 건 기준 **22.3초→3.5초(6.4배, 84.5%↓)**, 59만 건 환산 약 7분 20초→1분 10초(정부 API 네트워크 시간 제외).
+   - 이 테스트는 `official_dishes`(가공식품과 구조·인덱스 동일)에 넣는다 — 처음엔 가공식품 테이블에 넣었다 지웠더니 FULLTEXT 인덱스에 삭제 표시가 쌓여서 이어서 돈 검색 테스트의 FULLTEXT 응답이 2ms→60ms로 오염됨(InnoDB FTS는 DELETE를 `OPTIMIZE TABLE` 전까지 삭제 목록으로만 들고 있음). 운영 동기화는 INSERT만 해서 해당 없음.
+3. **냉장고 재료 목록/통계 N+1** (`FridgeItemRepository.findWithIngredientByFridgeId`, `FridgeItemQueryCountTest`)
+   - 원인: 재료마다 LAZY `ingredient`(이름)·`category`(이름) 조회 + `NutritionInfo` 단건 조회가 따로 나가서 1+3N번.
+   - `join fetch ingredient left join fetch category` + `findByIngredientIdIn` 한 번으로 교체. 재료 50개 기준 **151번→3번**. 같은 N+1이 있던 `RecipeService`(AI 레시피 생성, 레시피 상세 inFridge 계산, 유튜브 검색어 구성)도 같은 fetch join 메서드로 바꿈.
+
 ## 다음 할 일 후보 (우선순위 순 아님, 상황 보고 정하기)
 
 - `FridgeItem`/`Recipe`/장보기/**식단 기록** API들의 냉장고·본인 권한 검증 강화 (지금은 냉장고 존재 여부 또는 최소한의 소유자 확인 정도만)

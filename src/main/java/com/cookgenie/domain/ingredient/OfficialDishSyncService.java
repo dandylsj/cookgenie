@@ -3,6 +3,7 @@ package com.cookgenie.domain.ingredient;
 import com.cookgenie.domain.ingredient.entity.OfficialDish;
 import com.cookgenie.domain.ingredient.external.MfdsDishClient;
 import com.cookgenie.domain.ingredient.external.OfficialDishCandidate;
+import com.cookgenie.domain.ingredient.repository.OfficialFoodBulkInsertRepository;
 import com.cookgenie.domain.ingredient.repository.OfficialDishRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,6 +34,7 @@ public class OfficialDishSyncService {
 
     private final MfdsDishClient mfdsDishClient;
     private final OfficialDishRepository officialDishRepository;
+    private final OfficialFoodBulkInsertRepository officialFoodBulkInsertRepository;
 
     /**
      * 이미 데이터가 있으면(force=false) 시작하지 않는다. force=true면 기존 데이터는 그대로 둔 채 전체를
@@ -88,34 +90,17 @@ public class OfficialDishSyncService {
                 .map(dish -> compositeKey(dish.getFoodCd(), dish.getFoodNm(), dish.getRestNm()))
                 .collect(Collectors.toSet());
 
-        List<OfficialDish> entities = deduped.entrySet().stream()
+        List<OfficialDishCandidate> newItems = deduped.entrySet().stream()
                 .filter(entry -> !alreadySaved.contains(entry.getKey()))
-                .map(entry -> toEntity(entry.getValue()))
+                .map(Map.Entry::getValue)
                 .toList();
-        if (!entities.isEmpty()) {
-            officialDishRepository.saveAll(entities);
-        }
-        return entities.size();
+        // IDENTITY PK라 JPA saveAll은 INSERT를 한 건씩 보낸다 - 대량 적재는 JDBC 배치로 한 번에 보낸다.
+        officialFoodBulkInsertRepository.insertDishes(newItems);
+        return newItems.size();
     }
 
     private String compositeKey(String foodCd, String foodNm, String restNm) {
         return foodCd + "" + foodNm + "" + (restNm == null ? "" : restNm);
-    }
-
-    private OfficialDish toEntity(OfficialDishCandidate candidate) {
-        return OfficialDish.builder()
-                .foodCd(candidate.foodCd())
-                .foodNm(candidate.foodNm())
-                .restNm(candidate.restNm())
-                .referenceUnit(candidate.referenceUnit())
-                .calories(candidate.calories())
-                .carbohydrateG(candidate.carbohydrateG())
-                .proteinG(candidate.proteinG())
-                .fatG(candidate.fatG())
-                .sugarG(candidate.sugarG())
-                .sodiumMg(candidate.sodiumMg())
-                .fiberG(candidate.fiberG())
-                .build();
     }
 
     public record SyncTriggerResult(boolean started, long previousCount, String message) {
